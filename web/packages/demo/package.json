@@ -6,7 +6,7 @@
     "private": true,
     "scripts": {
         "build": "webpack",
-        "serve": "webpack serve"
+        "serve": "webpack serve --host 0.0.0.0"
     },
     "dependencies": {
         "ruffle-core": "^0.1.0"

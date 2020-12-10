@@ -53,3 +53,7 @@ features = [
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.18"
+
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = ['-O', '-g']
+

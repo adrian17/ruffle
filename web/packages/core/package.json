@@ -11,7 +11,7 @@
     "scripts": {
         "build": "npm run build:wasm && npm run build:ts",
         "build:ts": "tsc -d && node tools/set_version.js",
-        "build:wasm": "wasm-pack build ../../ --out-dir packages/core/pkg",
+        "build:wasm": "wasm-pack build --profiling ../../ --out-dir packages/core/pkg",
         "docs": "typedoc",
         "test": "mocha -r esm -r ts-node/register test/**.ts"
     },
