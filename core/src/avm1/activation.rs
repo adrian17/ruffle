@@ -482,16 +482,12 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
                     self.action_constant_pool(&constant_pool[..])
                 }
                 Action::Decrement => self.action_decrement(),
-                Action::DefineFunction {
-                    name,
-                    params,
-                    actions,
-                } => self.action_define_function(
-                    &name,
-                    &params[..],
-                    data.to_unbounded_subslice(actions).unwrap(),
+                Action::DefineFunction(func) => self.action_define_function(
+                    &func.name,
+                    &func.params[..],
+                    data.to_unbounded_subslice(func.actions).unwrap(),
                 ),
-                Action::DefineFunction2(func) => self.action_define_function_2(&func, &data),
+                Action::DefineFunction2(func) => self.action_define_function_2(&*func, &data),
                 Action::DefineLocal => self.action_define_local(),
                 Action::DefineLocal2 => self.action_define_local_2(),
                 Action::Delete => self.action_delete(),
@@ -584,7 +580,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
                     self.action_with(data.to_unbounded_subslice(actions).unwrap())
                 }
                 Action::Throw => self.action_throw(),
-                Action::Try(try_block) => self.action_try(&try_block, &data),
+                Action::Try(try_block) => self.action_try(&*try_block, &data),
                 _ => self.unknown_op(action),
             }
         } else {

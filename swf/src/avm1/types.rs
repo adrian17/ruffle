@@ -1,5 +1,3 @@
-use smallvec::SmallVec;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action<'a> {
     Add,
@@ -20,12 +18,8 @@ pub enum Action<'a> {
     CloneSprite,
     ConstantPool(Vec<&'a str>),
     Decrement,
-    DefineFunction {
-        name: &'a str,
-        params: Vec<&'a str>,
-        actions: &'a [u8],
-    },
-    DefineFunction2(Function<'a>),
+    DefineFunction(Box<OldFunction<'a>>),
+    DefineFunction2(Box<Function<'a>>),
     DefineLocal,
     DefineLocal2,
     Delete,
@@ -84,7 +78,7 @@ pub enum Action<'a> {
     Play,
     Pop,
     PreviousFrame,
-    Push(SmallVec<[Value<'a>; 4]>),
+    Push(Vec<Value<'a>>),
     PushDuplicate,
     RandomNumber,
     RemoveSprite,
@@ -114,7 +108,7 @@ pub enum Action<'a> {
     ToString,
     ToggleQuality,
     Trace,
-    Try(TryBlock<'a>),
+    Try(Box<TryBlock<'a>>),
     TypeOf,
     WaitForFrame {
         frame: u16,
@@ -150,6 +144,13 @@ pub enum SendVarsMethod {
     None,
     Get,
     Post,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OldFunction<'a> {
+    pub name: &'a str,
+    pub params: Vec<&'a str>,
+    pub actions: &'a [u8],
 }
 
 #[derive(Clone, Debug, PartialEq)]

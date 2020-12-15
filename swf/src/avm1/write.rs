@@ -50,23 +50,19 @@ impl<W: Write> Writer<W> {
                 }
             }
             Action::Decrement => self.write_action_header(OpCode::Decrement, 0)?,
-            Action::DefineFunction {
-                ref name,
-                ref params,
-                ref actions,
-            } => {
+            Action::DefineFunction(ref function) => {
                 // 1 zero byte for string name, 1 zero byte per param, 2 bytes for # of params,
                 // 2 bytes for code length
                 let len =
-                    name.len() + 1 + 2 + params.iter().map(|p| p.len() + 1).sum::<usize>() + 2;
+                    function.name.len() + 1 + 2 + function.params.iter().map(|p| p.len() + 1).sum::<usize>() + 2;
                 self.write_action_header(OpCode::DefineFunction, len)?;
-                self.write_c_string(name)?;
-                self.write_u16(params.len() as u16)?;
-                for param in params {
+                self.write_c_string(function.name)?;
+                self.write_u16(function.params.len() as u16)?;
+                for param in &function.params {
                     self.write_c_string(param)?;
                 }
-                self.write_u16(actions.len() as u16)?;
-                self.inner.write_all(actions)?;
+                self.write_u16(function.actions.len() as u16)?;
+                self.inner.write_all(function.actions)?;
             }
             Action::DefineFunction2(ref function) => {
                 let len = function.name.len()
