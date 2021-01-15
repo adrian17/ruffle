@@ -66,7 +66,6 @@ jobs:
   build-desktop-nightlies:
     name: Build desktop nightly for ${{ matrix.os }}
     needs: create-nightly-release
-    if: needs.create-nightly-release.outputs.activity_check == 'true'
     strategy:
       fail-fast: false
       matrix:
