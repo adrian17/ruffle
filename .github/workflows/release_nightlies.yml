@@ -33,6 +33,7 @@ jobs:
                 alive=1
              else
                 echo "[WARNING] Repository not updated : event<${{ github.event_name }}> not allowed to modify stale repository"
+                alive=1
              fi
           fi
           if [ $alive -eq 1 ]; then
