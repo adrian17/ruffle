@@ -40,31 +40,27 @@ fn sample_chroma_for_luma(
             (luma_y as i32 - 1) / 2
         };
 
-        sample_00 = chroma
-            .get(clamped_index(width, height, chroma_x, chroma_y))
-            .copied()
-            .unwrap_or(0) as u16;
-        sample_10 = chroma
-            .get(clamped_index(width, height, chroma_x + 1, chroma_y))
-            .copied()
-            .unwrap_or(0) as u16;
-        sample_01 = chroma
-            .get(clamped_index(width, height, chroma_x, chroma_y + 1))
-            .copied()
-            .unwrap_or(0) as u16;
-        sample_11 = chroma
-            .get(clamped_index(width, height, chroma_x + 1, chroma_y + 1))
-            .copied()
-            .unwrap_or(0) as u16;
+        unsafe {
+            sample_00 = *chroma
+                .get_unchecked(clamped_index(width, height, chroma_x, chroma_y)) as u16;
+            sample_10 = *chroma
+                .get_unchecked(clamped_index(width, height, chroma_x + 1, chroma_y)) as u16;
+            sample_01 = *chroma
+                .get_unchecked(clamped_index(width, height, chroma_x, chroma_y + 1)) as u16;
+            sample_11 = *chroma
+                .get_unchecked(clamped_index(width, height, chroma_x + 1, chroma_y + 1)) as u16;
+        }
     } else {
         let chroma_x = (luma_x as i32 - 1) / 2;
         let chroma_y = (luma_y as i32 - 1) / 2;
 
         let base = unclamped_index(width, chroma_x, chroma_y);
-        sample_00 = chroma.get(base).copied().unwrap_or(0) as u16;
-        sample_10 = chroma.get(base + 1).copied().unwrap_or(0) as u16;
-        sample_01 = chroma.get(base + chroma_width).copied().unwrap_or(0) as u16;
-        sample_11 = chroma.get(base + chroma_width + 1).copied().unwrap_or(0) as u16;
+        unsafe {
+            sample_00 = *chroma.get_unchecked(base) as u16;
+            sample_10 = *chroma.get_unchecked(base + 1) as u16;
+            sample_01 = *chroma.get_unchecked(base + chroma_width) as u16;
+            sample_11 = *chroma.get_unchecked(base + chroma_width + 1) as u16;
+        }
     }
 
     let interp_left = luma_x % 2 != 0;
@@ -110,10 +106,12 @@ fn convert_and_write_pixel(
     let (r, g, b) = yuv_to_rgb(yuv);
 
     let base = (x_pos + y_pos * width) * 4;
-    rgba[base] = clamp(r);
-    rgba[base + 1] = clamp(g);
-    rgba[base + 2] = clamp(b);
-    rgba[base + 3] = 255;
+    unsafe {
+        *rgba.get_unchecked_mut(base) = clamp(r);
+        *rgba.get_unchecked_mut(base + 1) = clamp(g);
+        *rgba.get_unchecked_mut(base + 2) = clamp(b);
+        *rgba.get_unchecked_mut(base + 3) = 255;
+    }
 }
 
 /// Convert YUV 4:2:0 data into RGB 1:1:1 data.
@@ -136,7 +134,7 @@ pub fn yuv420_to_rgba(
     // do the bulk of the pixels faster, with no clamping, leaving out the edges
     for y_pos in 1..y_height - 1 {
         for x_pos in 1..y_width - 1 {
-            let y_sample = y.get(x_pos + y_pos * y_width).copied().unwrap_or(0) as f32;
+            let y_sample = unsafe { *y.get_unchecked(x_pos + y_pos * y_width) } as f32;
             let b_sample =
                 sample_chroma_for_luma(chroma_b, br_width, br_height, x_pos, y_pos, false) as f32;
             let r_sample =
@@ -155,7 +153,7 @@ pub fn yuv420_to_rgba(
     // doing the sides with clamping
     for y_pos in 0..y_height {
         for x_pos in [0, y_width - 1].iter() {
-            let y_sample = y.get(x_pos + y_pos * y_width).copied().unwrap_or(0) as f32;
+            let y_sample = unsafe { *y.get_unchecked(x_pos + y_pos * y_width) } as f32;
             let b_sample =
                 sample_chroma_for_luma(chroma_b, br_width, br_height, *x_pos, y_pos, true) as f32;
             let r_sample =
@@ -174,7 +172,7 @@ pub fn yuv420_to_rgba(
     // doing the top and bottom edges with clamping
     for x_pos in 0..y_width {
         for y_pos in [0, y_height - 1].iter() {
-            let y_sample = y.get(x_pos + y_pos * y_width).copied().unwrap_or(0) as f32;
+            let y_sample = unsafe { *y.get_unchecked(x_pos + y_pos * y_width) } as f32;
             let b_sample =
                 sample_chroma_for_luma(chroma_b, br_width, br_height, x_pos, *y_pos, true) as f32;
             let r_sample =
