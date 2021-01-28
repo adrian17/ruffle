@@ -663,16 +663,21 @@ pub struct ShapeStyles {
 #[derive(Clone, Debug, PartialEq)]
 pub enum ShapeRecord {
     StyleChange(StyleChangeData),
-    StraightEdge {
-        delta_x: Twips,
-        delta_y: Twips,
-    },
-    CurvedEdge {
-        control_delta_x: Twips,
-        control_delta_y: Twips,
-        anchor_delta_x: Twips,
-        anchor_delta_y: Twips,
-    },
+    StraightEdge(StraightEdgeData),
+    CurvedEdge(CurvedEdgeData),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StraightEdgeData {
+    pub delta_x: Twips,
+    pub delta_y: Twips,
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CurvedEdgeData {
+    pub control_delta_x: Twips,
+    pub control_delta_y: Twips,
+    pub anchor_delta_x: Twips,
+    pub anchor_delta_y: Twips,
 }
 
 #[derive(Clone, Debug, PartialEq)]

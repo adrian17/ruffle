@@ -1856,16 +1856,16 @@ impl<'a> Reader<'a> {
                 } else {
                     Default::default()
                 };
-                Some(ShapeRecord::StraightEdge { delta_x, delta_y })
+                Some(ShapeRecord::StraightEdge(StraightEdgeData { delta_x, delta_y }))
             } else {
                 // CurvedEdge
                 let num_bits = bits.read_ubits(4)? + 2;
-                Some(ShapeRecord::CurvedEdge {
+                Some(ShapeRecord::CurvedEdge(CurvedEdgeData{
                     control_delta_x: bits.read_sbits_twips(num_bits)?,
                     control_delta_y: bits.read_sbits_twips(num_bits)?,
                     anchor_delta_x: bits.read_sbits_twips(num_bits)?,
                     anchor_delta_y: bits.read_sbits_twips(num_bits)?,
-                })
+                }))
             }
         } else {
             let flags = bits.read_ubits(5)?;

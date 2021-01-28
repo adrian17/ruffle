@@ -1569,7 +1569,7 @@ impl<W: Write> Writer<W> {
         context: &mut ShapeContext,
     ) -> Result<()> {
         match *record {
-            ShapeRecord::StraightEdge { delta_x, delta_y } => {
+            ShapeRecord::StraightEdge(StraightEdgeData{ delta_x, delta_y }) => {
                 bits.write_ubits(2, 0b11)?; // Straight edge
                                             // TODO: Check underflow?
                 let mut num_bits = max(count_sbits_twips(delta_x), count_sbits_twips(delta_y));
@@ -1587,12 +1587,12 @@ impl<W: Write> Writer<W> {
                     bits.write_sbits_twips(num_bits, delta_y)?;
                 }
             }
-            ShapeRecord::CurvedEdge {
+            ShapeRecord::CurvedEdge(CurvedEdgeData {
                 control_delta_x,
                 control_delta_y,
                 anchor_delta_x,
                 anchor_delta_y,
-            } => {
+            }) => {
                 bits.write_ubits(2, 0b10)?; // Curved edge
                 let num_bits = [
                     control_delta_x,
