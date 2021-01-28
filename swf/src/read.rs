@@ -1025,7 +1025,7 @@ impl<'a> Reader<'a> {
 
             let swf_version = self.version;
             for _ in 0..num_glyphs {
-                let mut glyph = vec![];
+                let mut glyph = ShapeRecordVec::new();
                 let num_bits = self.read_u8()?;
                 let mut shape_context = ShapeContext {
                     swf_version,
@@ -1068,7 +1068,7 @@ impl<'a> Reader<'a> {
         glyphs.resize(
             num_glyphs,
             Glyph {
-                shape_records: vec![],
+                shape_records: ShapeRecordVec::new(),
                 code: 0,
                 advance: None,
                 bounds: None,
@@ -1349,13 +1349,13 @@ impl<'a> Reader<'a> {
             num_fill_bits: bits.read_ubits(4)? as u8,
             num_line_bits: bits.read_ubits(4)? as u8,
         };
-        let mut start_shape = Vec::new();
+        let mut start_shape = ShapeRecordVec::new();
         while let Some(record) = Self::read_shape_record(&mut bits, &mut shape_context)? {
             start_shape.push(record);
         }
         drop(bits);
 
-        let mut end_shape = Vec::new();
+        let mut end_shape = ShapeRecordVec::new();
         self.read_u8()?; // NumFillBits and NumLineBits are written as 0 for the end shape.
         let mut shape_context = ShapeContext {
             swf_version: self.version,
@@ -1599,7 +1599,7 @@ impl<'a> Reader<'a> {
                 (shape_bounds.clone(), false, true, false)
             };
         let (styles, num_fill_bits, num_line_bits) = self.read_shape_styles(version)?;
-        let mut records = Vec::new();
+        let mut records = ShapeRecordVec::new();
         let mut shape_context = ShapeContext {
             swf_version: self.version,
             shape_version: version,

@@ -153,7 +153,7 @@ impl MorphShapeStatic {
         let library = context.library.library_for_movie(Arc::clone(&self.movie));
 
         // Interpolate MorphShapes into a Shape.
-        use swf::{FillStyle, LineStyle, ShapeRecord, ShapeStyles};
+        use swf::{FillStyle, LineStyle, ShapeRecord, ShapeRecordVec, ShapeRecordRef, ShapeStyles};
         // Start shape is ratio 65535, end shape is ratio 0.
         let b = f32::from(ratio) / 65535.0;
         let a = 1.0 - b;
@@ -183,7 +183,7 @@ impl MorphShapeStatic {
             })
             .collect();
 
-        let mut shape = Vec::with_capacity(self.start.shape.len());
+        let mut shape = ShapeRecordVec::new();
         let mut start_iter = self.start.shape.iter();
         let mut end_iter = self.end.shape.iter();
         let mut start = start_iter.next();
@@ -200,7 +200,7 @@ impl MorphShapeStatic {
         // in case one side is missing a move_to; it will implicitly use the last pen position.
         while let (Some(s), Some(e)) = (start, end) {
             match (s, e) {
-                (ShapeRecord::StyleChange(start_change), ShapeRecord::StyleChange(end_change)) => {
+                (ShapeRecordRef::StyleChange(start_change), ShapeRecordRef::StyleChange(end_change)) => {
                     let mut style_change = start_change.clone();
                     if start_change.move_to != end_change.move_to {
                         if let Some((s_x, s_y)) = start_change.move_to {
@@ -220,7 +220,7 @@ impl MorphShapeStatic {
                     start = start_iter.next();
                     end = end_iter.next();
                 }
-                (ShapeRecord::StyleChange(start_change), _) => {
+                (ShapeRecordRef::StyleChange(start_change), _) => {
                     let mut style_change = start_change.clone();
                     if let Some((s_x, s_y)) = start_change.move_to {
                         start_x = s_x;
@@ -234,7 +234,7 @@ impl MorphShapeStatic {
                     Self::update_pos(&mut start_x, &mut start_y, s);
                     start = start_iter.next();
                 }
-                (_, ShapeRecord::StyleChange(end_change)) => {
+                (_, ShapeRecordRef::StyleChange(end_change)) => {
                     let mut style_change = end_change.clone();
                     if let Some((e_x, e_y)) = end_change.move_to {
                         end_x = e_x;
@@ -264,7 +264,7 @@ impl MorphShapeStatic {
             line_styles,
         };
 
-        let bounds = crate::shape_utils::calculate_shape_bounds(&shape[..]);
+        let bounds = crate::shape_utils::calculate_shape_bounds(&shape);
         let shape = swf::Shape {
             version: 4,
             id: 0,
@@ -285,16 +285,16 @@ impl MorphShapeStatic {
         self.frames.insert(ratio, frame);
     }
 
-    fn update_pos(x: &mut Twips, y: &mut Twips, record: &swf::ShapeRecord) {
-        use swf::ShapeRecord;
+    fn update_pos(x: &mut Twips, y: &mut Twips, record: swf::ShapeRecordRef) {
+        use swf::ShapeRecordRef;
         use swf::CurvedEdgeData;
         use swf::StraightEdgeData;
         match record {
-            ShapeRecord::StraightEdge(StraightEdgeData { delta_x, delta_y }) => {
+            ShapeRecordRef::StraightEdge(StraightEdgeData { delta_x, delta_y }) => {
                 *x += *delta_x;
                 *y += *delta_y;
             }
-            ShapeRecord::CurvedEdge(CurvedEdgeData {
+            ShapeRecordRef::CurvedEdge(CurvedEdgeData {
                 control_delta_x,
                 control_delta_y,
                 anchor_delta_x,
@@ -303,7 +303,7 @@ impl MorphShapeStatic {
                 *x += *control_delta_x + *anchor_delta_x;
                 *y += *control_delta_y + *anchor_delta_y;
             }
-            ShapeRecord::StyleChange(ref style_change) => {
+            ShapeRecordRef::StyleChange(ref style_change) => {
                 if let Some((move_x, move_y)) = style_change.move_to {
                     *x = move_x;
                     *y = move_y;
@@ -404,21 +404,22 @@ fn lerp_fill(start: &swf::FillStyle, end: &swf::FillStyle, a: f32, b: f32) -> sw
 }
 
 fn lerp_edges(
-    start: &swf::ShapeRecord,
-    end: &swf::ShapeRecord,
+    start: swf::ShapeRecordRef,
+    end: swf::ShapeRecordRef,
     a: f32,
     b: f32,
 ) -> swf::ShapeRecord {
     use swf::ShapeRecord;
+    use swf::ShapeRecordRef;
     use swf::StraightEdgeData;
     use swf::CurvedEdgeData;
     match (start, end) {
         (
-            &ShapeRecord::StraightEdge(StraightEdgeData {
+            ShapeRecordRef::StraightEdge(&StraightEdgeData {
                 delta_x: start_dx,
                 delta_y: start_dy,
             }),
-            &ShapeRecord::StraightEdge(StraightEdgeData {
+            ShapeRecordRef::StraightEdge(&StraightEdgeData {
                 delta_x: end_dx,
                 delta_y: end_dy,
             }),
@@ -428,13 +429,13 @@ fn lerp_edges(
         }),
 
         (
-            &ShapeRecord::CurvedEdge(CurvedEdgeData {
+            ShapeRecordRef::CurvedEdge(&CurvedEdgeData {
                 control_delta_x: start_cdx,
                 control_delta_y: start_cdy,
                 anchor_delta_x: start_adx,
                 anchor_delta_y: start_ady,
             }),
-            &ShapeRecord::CurvedEdge(CurvedEdgeData {
+            ShapeRecordRef::CurvedEdge(&CurvedEdgeData {
                 control_delta_x: end_cdx,
                 control_delta_y: end_cdy,
                 anchor_delta_x: end_adx,
@@ -448,11 +449,11 @@ fn lerp_edges(
         }),
 
         (
-            &ShapeRecord::StraightEdge(StraightEdgeData {
+            ShapeRecordRef::StraightEdge(&StraightEdgeData {
                 delta_x: start_dx,
                 delta_y: start_dy,
             }),
-            &ShapeRecord::CurvedEdge(CurvedEdgeData {
+            ShapeRecordRef::CurvedEdge(&CurvedEdgeData {
                 control_delta_x: end_cdx,
                 control_delta_y: end_cdy,
                 anchor_delta_x: end_adx,
@@ -472,13 +473,13 @@ fn lerp_edges(
         }
 
         (
-            &ShapeRecord::CurvedEdge(CurvedEdgeData {
+            ShapeRecordRef::CurvedEdge(&CurvedEdgeData {
                 control_delta_x: start_cdx,
                 control_delta_y: start_cdy,
                 anchor_delta_x: start_adx,
                 anchor_delta_y: start_ady,
             }),
-            &ShapeRecord::StraightEdge(StraightEdgeData {
+            ShapeRecordRef::StraightEdge(&StraightEdgeData {
                 delta_x: end_dx,
                 delta_y: end_dy,
             }),

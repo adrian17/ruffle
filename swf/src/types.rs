@@ -7,8 +7,10 @@ use crate::string::SwfStr;
 use bitflags::bitflags;
 
 mod matrix;
+mod shape_record_vec;
 
 pub use matrix::Matrix;
+pub use shape_record_vec::{ShapeRecordVec, ShapeRecordRef, ShapeRecordVecIter};
 
 /// A complete header and tags in the SWF file.
 /// This is returned by the `swf::read_swf` convenience method.
@@ -605,7 +607,7 @@ pub struct Shape {
     pub has_non_scaling_strokes: bool,
     pub has_scaling_strokes: bool,
     pub styles: ShapeStyles,
-    pub shape: Vec<ShapeRecord>,
+    pub shape: ShapeRecordVec,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -891,13 +893,13 @@ pub struct MorphShape {
     pub edge_bounds: Rectangle,
     pub fill_styles: Vec<FillStyle>,
     pub line_styles: Vec<LineStyle>,
-    pub shape: Vec<ShapeRecord>,
+    pub shape: ShapeRecordVec,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FontV1 {
     pub id: CharacterId,
-    pub glyphs: Vec<Vec<ShapeRecord>>,
+    pub glyphs: Vec<ShapeRecordVec>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -926,7 +928,7 @@ pub struct Font4<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Glyph {
-    pub shape_records: Vec<ShapeRecord>,
+    pub shape_records: ShapeRecordVec,
     pub code: u16,
     pub advance: Option<i16>,
     pub bounds: Option<Rectangle>,

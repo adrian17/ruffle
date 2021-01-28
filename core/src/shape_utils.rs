@@ -2,9 +2,9 @@ use crate::bounding_box::BoundingBox;
 use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::num::NonZeroU32;
-use swf::{CharacterId, FillStyle, LineStyle, Matrix, Shape, ShapeRecord, Twips};
+use swf::{CharacterId, FillStyle, LineStyle, Matrix, Shape, ShapeRecordRef, Twips};
 
-pub fn calculate_shape_bounds(shape_records: &[swf::ShapeRecord]) -> swf::Rectangle {
+pub fn calculate_shape_bounds(shape_records: &swf::ShapeRecordVec) -> swf::Rectangle {
     let mut bounds = swf::Rectangle {
         x_min: Twips::new(std::i32::MAX),
         y_min: Twips::new(std::i32::MAX),
@@ -15,7 +15,7 @@ pub fn calculate_shape_bounds(shape_records: &[swf::ShapeRecord]) -> swf::Rectan
     let mut y = Twips::new(0);
     for record in shape_records {
         match record {
-            swf::ShapeRecord::StyleChange(style_change) => {
+            swf::ShapeRecordRef::StyleChange(style_change) => {
                 if let Some((move_x, move_y)) = style_change.move_to {
                     x = move_x;
                     y = move_y;
@@ -25,7 +25,7 @@ pub fn calculate_shape_bounds(shape_records: &[swf::ShapeRecord]) -> swf::Rectan
                     bounds.y_max = Twips::max(bounds.y_max, y);
                 }
             }
-            swf::ShapeRecord::StraightEdge(swf::StraightEdgeData { delta_x, delta_y }) => {
+            swf::ShapeRecordRef::StraightEdge(swf::StraightEdgeData { delta_x, delta_y }) => {
                 x += *delta_x;
                 y += *delta_y;
                 bounds.x_min = Twips::min(bounds.x_min, x);
@@ -33,7 +33,7 @@ pub fn calculate_shape_bounds(shape_records: &[swf::ShapeRecord]) -> swf::Rectan
                 bounds.y_min = Twips::min(bounds.y_min, y);
                 bounds.y_max = Twips::max(bounds.y_max, y);
             }
-            swf::ShapeRecord::CurvedEdge(swf::CurvedEdgeData {
+            swf::ShapeRecordRef::CurvedEdge(swf::CurvedEdgeData {
                 control_delta_x,
                 control_delta_y,
                 anchor_delta_x,
@@ -328,7 +328,7 @@ impl ActivePath {
 
 pub struct ShapeConverter<'a> {
     // SWF shape commands.
-    iter: std::slice::Iter<'a, swf::ShapeRecord>,
+    iter: swf::ShapeRecordVecIter<'a>,
 
     // Pen position.
     x: Twips,
@@ -382,7 +382,7 @@ impl<'a> ShapeConverter<'a> {
         let mut num_line_styles = self.line_styles.len() as u32;
         while let Some(record) = self.iter.next() {
             match record {
-                ShapeRecord::StyleChange(style_change) => {
+                ShapeRecordRef::StyleChange(style_change) => {
                     if let Some((x, y)) = style_change.move_to {
                         self.x = x;
                         self.y = y;
@@ -445,7 +445,7 @@ impl<'a> ShapeConverter<'a> {
                     }
                 }
 
-                ShapeRecord::StraightEdge(swf::StraightEdgeData{ delta_x, delta_y }) => {
+                ShapeRecordRef::StraightEdge(swf::StraightEdgeData{ delta_x, delta_y }) => {
                     self.x += *delta_x;
                     self.y += *delta_y;
 
@@ -456,7 +456,7 @@ impl<'a> ShapeConverter<'a> {
                     });
                 }
 
-                ShapeRecord::CurvedEdge(swf::CurvedEdgeData {
+                ShapeRecordRef::CurvedEdge(swf::CurvedEdgeData {
                     control_delta_x,
                     control_delta_y,
                     anchor_delta_x,
@@ -765,7 +765,7 @@ pub fn shape_hit_test(
 
     for record in shape.shape.iter() {
         match record {
-            swf::ShapeRecord::StyleChange(style_change) => {
+            ShapeRecordRef::StyleChange(style_change) => {
                 // New styles indicates a new layer;
                 // Check if the point is within the current layer, then reset winding.
                 if let Some(new_styles) = &style_change.new_styles {
@@ -802,7 +802,7 @@ pub fn shape_hit_test(
                     };
                 }
             }
-            swf::ShapeRecord::StraightEdge(swf::StraightEdgeData { delta_x, delta_y }) => {
+            ShapeRecordRef::StraightEdge(swf::StraightEdgeData { delta_x, delta_y }) => {
                 let x1 = x + *delta_x;
                 let y1 = y + *delta_y;
                 // If this edge has a fill style on only one-side, check for a crossing.
@@ -822,7 +822,7 @@ pub fn shape_hit_test(
                 x = x1;
                 y = y1;
             }
-            swf::ShapeRecord::CurvedEdge(swf::CurvedEdgeData {
+            ShapeRecordRef::CurvedEdge(swf::CurvedEdgeData {
                 control_delta_x,
                 control_delta_y,
                 anchor_delta_x,
@@ -1332,7 +1332,7 @@ pub fn swf_glyph_to_shape(glyph: &swf::Glyph) -> swf::Shape {
         .bounds
         .clone()
         .filter(|b| b.x_min != b.x_max || b.y_min != b.y_max)
-        .unwrap_or_else(|| calculate_shape_bounds(&glyph.shape_records[..]));
+        .unwrap_or_else(|| calculate_shape_bounds(&glyph.shape_records));
     swf::Shape {
         version: 2,
         id: 0,
