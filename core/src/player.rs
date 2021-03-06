@@ -992,7 +992,7 @@ impl Player {
             let root_data = gc_root.0.read();
             let mut render_context = RenderContext {
                 renderer: renderer.deref_mut(),
-                library: &root_data.library,
+                library: &mut root_data.library,
                 gc_context,
                 transform_stack,
                 view_bounds,

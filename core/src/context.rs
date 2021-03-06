@@ -378,7 +378,7 @@ pub struct RenderContext<'a, 'gc, 'gc_context> {
     pub renderer: &'a mut dyn RenderBackend,
 
     /// The library, which provides access to fonts and other definitions when rendering.
-    pub library: &'a Library<'gc>,
+    pub library: &'a mut Library<'gc>,
 
     pub gc_context: MutationContext<'gc, 'gc_context>,
 
