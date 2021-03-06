@@ -988,11 +988,12 @@ impl Player {
         });
 
         let view_bounds = self.view_bounds.clone();
-        self.gc_arena.mutate(|_gc_context, gc_root| {
+        self.gc_arena.mutate(|gc_context, gc_root| {
             let root_data = gc_root.0.read();
             let mut render_context = RenderContext {
                 renderer: renderer.deref_mut(),
                 library: &root_data.library,
+                gc_context,
                 transform_stack,
                 view_bounds,
                 clip_depth_stack: vec![],

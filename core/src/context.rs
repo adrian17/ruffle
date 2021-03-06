@@ -373,12 +373,14 @@ unsafe impl<'gc> Collect for ActionQueue<'gc> {
 
 /// Shared data used during rendering.
 /// `Player` creates this when it renders a frame and passes it down to display objects.
-pub struct RenderContext<'a, 'gc> {
+pub struct RenderContext<'a, 'gc, 'gc_context> {
     /// The renderer, used by the display objects to draw themselves.
     pub renderer: &'a mut dyn RenderBackend,
 
     /// The library, which provides access to fonts and other definitions when rendering.
     pub library: &'a Library<'gc>,
+
+    pub gc_context: MutationContext<'gc, 'gc_context>,
 
     /// The transform stack controls the matrix and color transform as we traverse the display hierarchy.
     pub transform_stack: &'a mut TransformStack,
