@@ -3,6 +3,7 @@
 use crate::avm1::activation::{Activation, ActivationIdentifier};
 use crate::avm1::{Avm1, AvmString, Object, StageObject, TObject, Value};
 use crate::backend::ui::MouseCursor;
+use crate::library::Library;
 use crate::context::{RenderContext, UpdateContext};
 use crate::display_object::{DisplayObjectBase, TDisplayObject};
 use crate::drawing::Drawing;
@@ -191,7 +192,7 @@ impl<'gc> EditText<'gc> {
 
         let (layout, intrinsic_bounds) = LayoutBox::lower_from_text_spans(
             &text_spans,
-            context,
+            context.library,
             swf_movie.clone(),
             bounds.width() - Twips::from_pixels(Self::INTERNAL_PADDING * 2.0),
             swf_tag.is_word_wrap,
@@ -358,7 +359,7 @@ impl<'gc> EditText<'gc> {
 
         drop(edit_text);
 
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
 
         Ok(())
     }
@@ -428,7 +429,7 @@ impl<'gc> EditText<'gc> {
 
         drop(write);
 
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     pub fn text_length(self) -> usize {
@@ -463,7 +464,7 @@ impl<'gc> EditText<'gc> {
             .write(context.gc_context)
             .text_spans
             .set_text_format(from, to, &tf);
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     pub fn is_editable(self) -> bool {
@@ -484,12 +485,12 @@ impl<'gc> EditText<'gc> {
 
     pub fn set_password(self, is_password: bool, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).is_password = is_password;
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     pub fn set_multiline(self, is_multiline: bool, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).is_multiline = is_multiline;
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     pub fn is_selectable(self) -> bool {
@@ -506,7 +507,7 @@ impl<'gc> EditText<'gc> {
 
     pub fn set_word_wrap(self, is_word_wrap: bool, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).is_word_wrap = is_word_wrap;
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     pub fn autosize(self) -> AutoSizeMode {
@@ -515,7 +516,7 @@ impl<'gc> EditText<'gc> {
 
     pub fn set_autosize(self, asm: AutoSizeMode, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).autosize = asm;
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     pub fn has_background(self) -> bool {
@@ -564,7 +565,7 @@ impl<'gc> EditText<'gc> {
         is_device_font: bool,
     ) {
         self.0.write(context.gc_context).is_device_font = is_device_font;
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     pub fn is_html(self) -> bool {
@@ -586,7 +587,7 @@ impl<'gc> EditText<'gc> {
             .write(context.gc_context)
             .text_spans
             .replace_text(from, to, text, None);
-        self.relayout(context);
+        self.relayout(context.gc_context, context.library);
     }
 
     /// Construct a base text transform for a particular `EditText` span.
@@ -673,8 +674,8 @@ impl<'gc> EditText<'gc> {
     /// written into.
 
     /// Redraw the border of this `EditText`.
-    fn redraw_border(self, context: MutationContext<'gc, '_>) {
-        let mut write = self.0.write(context);
+    fn redraw_border(self, gc_context: MutationContext<'gc, '_>) {
+        let mut write = self.0.write(gc_context);
 
         write.drawing.clear();
 
@@ -734,8 +735,8 @@ impl<'gc> EditText<'gc> {
     /// the text, and no higher-level representation. Specifically, CSS should
     /// have already been calculated and applied to HTML trees lowered into the
     /// text-span representation.
-    fn relayout(self, context: &mut UpdateContext<'_, 'gc, '_>) {
-        let mut edit_text = self.0.write(context.gc_context);
+    fn relayout(self, gc_context: MutationContext<'gc, '_>, library: &mut Library<'gc>) {
+        let mut edit_text = self.0.write(gc_context);
         let autosize = edit_text.autosize;
         let is_word_wrap = edit_text.is_word_wrap;
         let movie = edit_text.static_data.swf.clone();
@@ -751,7 +752,7 @@ impl<'gc> EditText<'gc> {
 
         let (new_layout, intrinsic_bounds) = LayoutBox::lower_from_text_spans(
             &edit_text.text_spans,
-            context,
+            library,
             movie,
             width,
             is_word_wrap,
@@ -771,7 +772,7 @@ impl<'gc> EditText<'gc> {
                 edit_text.bounds.set_height(intrinsic_bounds.height());
                 edit_text.base.set_transformed_by_script(true);
                 drop(edit_text);
-                self.redraw_border(context.gc_context);
+                self.redraw_border(gc_context);
             }
             AutoSizeMode::Center => {
                 if !is_word_wrap {
@@ -785,7 +786,7 @@ impl<'gc> EditText<'gc> {
                 edit_text.bounds.set_height(intrinsic_bounds.height());
                 edit_text.base.set_transformed_by_script(true);
                 drop(edit_text);
-                self.redraw_border(context.gc_context);
+                self.redraw_border(gc_context);
             }
             AutoSizeMode::Right => {
                 if !is_word_wrap {
@@ -797,7 +798,7 @@ impl<'gc> EditText<'gc> {
                 edit_text.bounds.set_height(intrinsic_bounds.height());
                 edit_text.base.set_transformed_by_script(true);
                 drop(edit_text);
-                self.redraw_border(context.gc_context);
+                self.redraw_border(gc_context);
             }
         }
     }
@@ -1399,9 +1400,9 @@ impl<'gc> TDisplayObject<'gc> for EditText<'gc> {
         self.redraw_border(gc_context);
     }
 
-    fn set_matrix(&self, context: MutationContext<'gc, '_>, matrix: &Matrix) {
-        self.0.write(context).base.set_matrix(context, matrix);
-        self.redraw_border(context);
+    fn set_matrix(&self, gc_context: MutationContext<'gc, '_>, matrix: &Matrix) {
+        self.0.write(gc_context).base.set_matrix(gc_context, matrix);
+        self.redraw_border(gc_context);
     }
 
     fn render_self(&self, context: &mut RenderContext<'_, 'gc>) {

@@ -1,7 +1,7 @@
 //! Layout box structure
 
 use crate::collect::CollectWrapper;
-use crate::context::UpdateContext;
+use crate::library::Library;
 use crate::drawing::Drawing;
 use crate::font::{EvalParameters, Font};
 use crate::html::dimensions::{BoxBounds, Position, Size};
@@ -219,7 +219,7 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
     /// automatic newline and no more text is to be expected).
     fn fixup_line(
         &mut self,
-        context: &mut UpdateContext<'_, 'gc, '_>,
+        library: &mut Library<'gc>,
         only_line: bool,
         final_line_of_para: bool,
     ) {
@@ -283,7 +283,7 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
         };
 
         if self.current_line_span.bullet {
-            self.append_bullet(context, &self.current_line_span.clone());
+            self.append_bullet(library, &self.current_line_span.clone());
         }
 
         box_count = 0;
@@ -325,8 +325,8 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
     ///
     /// This function will also adjust any layout boxes on the current line to
     /// their correct alignment and indentation.
-    fn explicit_newline(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
-        self.fixup_line(context, false, true);
+    fn explicit_newline(&mut self, library: &mut Library<'gc>) {
+        self.fixup_line(library, false, true);
 
         self.cursor.set_x(Twips::from_pixels(0.0));
         self.cursor += (
@@ -343,8 +343,8 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
     ///
     /// This function will also adjust any layout boxes on the current line to
     /// their correct alignment and indentation.
-    fn newline(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
-        self.fixup_line(context, false, false);
+    fn newline(&mut self, library: &mut Library<'gc>) {
+        self.fixup_line(library, false, false);
 
         self.cursor.set_x(Twips::from_pixels(0.0));
         self.cursor += (
@@ -393,19 +393,19 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
 
     fn resolve_font(
         &mut self,
-        context: &mut UpdateContext<'_, 'gc, '_>,
+        library: &mut Library<'gc>,
         span: &TextSpan,
         is_device_font: bool,
     ) -> Option<Font<'gc>> {
-        let library = context.library.library_for_movie_mut(self.movie.clone());
+        let movie_library = library.library_for_movie_mut(self.movie.clone());
 
         // If this text field is set to use device fonts, fallback to using our embedded Noto Sans.
         // Note that the SWF can still contain a DefineFont tag with no glyphs/layout info in this case (see #451).
         // In an ideal world, device fonts would search for a matching font on the system and render it in some way.
-        if let Some(font) = library
+        if let Some(font) = movie_library
             .get_font_by_name(&span.font, span.bold, span.italic)
             .filter(|f| !is_device_font && f.has_glyphs())
-            .or_else(|| context.library.device_font())
+            .or_else(|| library.device_font())
         {
             self.font = Some(font);
             return self.font;
@@ -457,13 +457,13 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
     /// The bullet will always be placed at the start of the current line. It
     /// should be appended after line fixup has completed, but before the text
     /// cursor is moved down.
-    fn append_bullet(&mut self, context: &mut UpdateContext<'_, 'gc, '_>, span: &TextSpan) {
-        let library = context.library.library_for_movie_mut(self.movie.clone());
+    fn append_bullet(&mut self, library: &mut Library<'gc>, span: &TextSpan) {
+        let movie_library = library.library_for_movie_mut(self.movie.clone());
 
-        if let Some(bullet_font) = library
+        if let Some(bullet_font) = movie_library
             .get_font_by_name(&span.font, span.bold, span.italic)
             .filter(|f| f.has_glyphs())
-            .or_else(|| context.library.device_font())
+            .or_else(|| library.device_font())
             .or(self.font)
         {
             let mut bullet_cursor = self.cursor;
@@ -525,9 +525,9 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
     /// Destroy the layout context, returning the newly constructed layout list.
     fn end_layout(
         mut self,
-        context: &mut UpdateContext<'_, 'gc, '_>,
+        library: &mut Library<'gc>,
     ) -> (Vec<LayoutBox<'gc>>, BoxBounds<Twips>) {
-        self.fixup_line(context, !self.has_line_break, true);
+        self.fixup_line(library, !self.has_line_break, true);
 
         (
             self.boxes,
@@ -659,7 +659,7 @@ impl<'gc> LayoutBox<'gc> {
     /// as left and right margins on any of the lines.
     pub fn lower_from_text_spans(
         fs: &FormatSpans,
-        context: &mut UpdateContext<'_, 'gc, '_>,
+        library: &mut Library<'gc>,
         movie: Arc<SwfMovie>,
         bounds: Twips,
         is_word_wrap: bool,
@@ -668,7 +668,7 @@ impl<'gc> LayoutBox<'gc> {
         let mut layout_context = LayoutContext::new(movie, bounds, fs.displayed_text());
 
         for (span_start, _end, span_text, span) in fs.iter_spans() {
-            if let Some(font) = layout_context.resolve_font(context, &span, is_device_font) {
+            if let Some(font) = layout_context.resolve_font(library, &span, is_device_font) {
                 layout_context.newspan(span);
 
                 let params = EvalParameters::from_span(span);
@@ -685,7 +685,7 @@ impl<'gc> LayoutBox<'gc> {
                     };
 
                     match delimiter {
-                        Some('\n') | Some('\r') => layout_context.explicit_newline(context),
+                        Some('\n') | Some('\r') => layout_context.explicit_newline(library),
                         Some('\t') => layout_context.tab(),
                         _ => {}
                     }
@@ -705,7 +705,7 @@ impl<'gc> LayoutBox<'gc> {
                             layout_context.is_start_of_line(),
                         ) {
                             if breakpoint == 0 {
-                                layout_context.newline(context);
+                                layout_context.newline(library);
 
                                 let next_dim = layout_context.wrap_dimensions(&span);
 
@@ -738,7 +738,7 @@ impl<'gc> LayoutBox<'gc> {
                                 break;
                             }
 
-                            layout_context.newline(context);
+                            layout_context.newline(library);
                             let next_dim = layout_context.wrap_dimensions(&span);
 
                             width = next_dim.0;
@@ -760,7 +760,7 @@ impl<'gc> LayoutBox<'gc> {
             }
         }
 
-        layout_context.end_layout(context)
+        layout_context.end_layout(library)
     }
 
     pub fn bounds(&self) -> BoxBounds<Twips> {
