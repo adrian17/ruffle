@@ -146,6 +146,8 @@ pub struct EditTextData<'gc> {
 
     /// Which rendering engine this text field will use.
     render_settings: TextRenderSettings,
+
+    needs_relayout: bool,
 }
 
 impl<'gc> EditText<'gc> {
@@ -275,6 +277,7 @@ impl<'gc> EditText<'gc> {
                 selection: None,
                 has_focus: false,
                 render_settings: Default::default(),
+                needs_relayout: true,
             },
         ));
 
@@ -357,9 +360,7 @@ impl<'gc> EditText<'gc> {
 
         edit_text.text_spans.replace_text(0, len, &text, Some(&tf));
 
-        drop(edit_text);
-
-        self.relayout(context.gc_context, context.library);
+        edit_text.needs_relayout = true;
 
         Ok(())
     }
@@ -426,10 +427,7 @@ impl<'gc> EditText<'gc> {
 
         write.document = doc;
         write.text_spans.lower_from_html(doc);
-
-        drop(write);
-
-        self.relayout(context.gc_context, context.library);
+        write.needs_relayout = true;
     }
 
     pub fn text_length(self) -> usize {
@@ -464,7 +462,7 @@ impl<'gc> EditText<'gc> {
             .write(context.gc_context)
             .text_spans
             .set_text_format(from, to, &tf);
-        self.relayout(context.gc_context, context.library);
+        self.0.write(context.gc_context).needs_relayout = true;
     }
 
     pub fn is_editable(self) -> bool {
@@ -485,12 +483,12 @@ impl<'gc> EditText<'gc> {
 
     pub fn set_password(self, is_password: bool, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).is_password = is_password;
-        self.relayout(context.gc_context, context.library);
+        self.0.write(context.gc_context).needs_relayout = true;
     }
 
     pub fn set_multiline(self, is_multiline: bool, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).is_multiline = is_multiline;
-        self.relayout(context.gc_context, context.library);
+        self.0.write(context.gc_context).needs_relayout = true;
     }
 
     pub fn is_selectable(self) -> bool {
@@ -507,7 +505,7 @@ impl<'gc> EditText<'gc> {
 
     pub fn set_word_wrap(self, is_word_wrap: bool, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).is_word_wrap = is_word_wrap;
-        self.relayout(context.gc_context, context.library);
+        self.0.write(context.gc_context).needs_relayout = true;
     }
 
     pub fn autosize(self) -> AutoSizeMode {
@@ -516,7 +514,7 @@ impl<'gc> EditText<'gc> {
 
     pub fn set_autosize(self, asm: AutoSizeMode, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.0.write(context.gc_context).autosize = asm;
-        self.relayout(context.gc_context, context.library);
+        self.0.write(context.gc_context).needs_relayout = true;
     }
 
     pub fn has_background(self) -> bool {
@@ -565,7 +563,7 @@ impl<'gc> EditText<'gc> {
         is_device_font: bool,
     ) {
         self.0.write(context.gc_context).is_device_font = is_device_font;
-        self.relayout(context.gc_context, context.library);
+        self.0.write(context.gc_context).needs_relayout = true;
     }
 
     pub fn is_html(self) -> bool {
@@ -587,7 +585,7 @@ impl<'gc> EditText<'gc> {
             .write(context.gc_context)
             .text_spans
             .replace_text(from, to, text, None);
-        self.relayout(context.gc_context, context.library);
+        self.0.write(context.gc_context).needs_relayout = true;
     }
 
     /// Construct a base text transform for a particular `EditText` span.
@@ -735,8 +733,14 @@ impl<'gc> EditText<'gc> {
     /// the text, and no higher-level representation. Specifically, CSS should
     /// have already been calculated and applied to HTML trees lowered into the
     /// text-span representation.
-    fn relayout(self, gc_context: MutationContext<'gc, '_>, library: &mut Library<'gc>) {
+    fn relayout_if_needed(self, gc_context: MutationContext<'gc, '_>, library: &mut Library<'gc>) {
         let mut edit_text = self.0.write(gc_context);
+
+        if !edit_text.needs_relayout {
+            return;
+        }
+        edit_text.needs_relayout = false;
+
         let autosize = edit_text.autosize;
         let is_word_wrap = edit_text.is_word_wrap;
         let movie = edit_text.static_data.swf.clone();
@@ -1403,6 +1407,10 @@ impl<'gc> TDisplayObject<'gc> for EditText<'gc> {
     fn set_matrix(&self, gc_context: MutationContext<'gc, '_>, matrix: &Matrix) {
         self.0.write(gc_context).base.set_matrix(gc_context, matrix);
         self.redraw_border(gc_context);
+    }
+
+    fn pre_render_self(&self, context: &mut RenderContext<'_, 'gc, '_>) {
+        self.relayout_if_needed(context.gc_context, context.library);
     }
 
     fn render_self(&self, context: &mut RenderContext<'_, 'gc, '_>) {

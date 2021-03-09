@@ -949,7 +949,11 @@ pub trait TDisplayObject<'gc>:
 
     fn render_self(&self, _context: &mut RenderContext<'_, 'gc, '_>) {}
 
+    fn pre_render_self(&self, context: &mut RenderContext<'_, 'gc, '_>) {}
+
     fn render(&self, context: &mut RenderContext<'_, 'gc, '_>) {
+        self.pre_render_self(context);
+
         if self.maskee().is_some() {
             return;
         }

@@ -989,10 +989,25 @@ impl Player {
 
         let view_bounds = self.view_bounds.clone();
         self.gc_arena.mutate(|gc_context, gc_root| {
-            let root_data = gc_root.0.read();
+            let mut root_data = gc_root.0.write(gc_context);
+            let (
+                levels,
+                library,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+            ) = root_data.update_context_params();
+
             let mut render_context = RenderContext {
                 renderer: renderer.deref_mut(),
-                library: &mut root_data.library,
+                library: library,
                 gc_context,
                 transform_stack,
                 view_bounds,
@@ -1000,7 +1015,7 @@ impl Player {
                 allow_mask: true,
             };
 
-            for (_depth, level) in root_data.levels.iter() {
+            for (_depth, level) in levels.iter() {
                 level.render(&mut render_context);
             }
         });
