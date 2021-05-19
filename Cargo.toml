@@ -10,6 +10,7 @@ members = [
     "wstr",
     "scanner",
     "exporter",
+    "headless",
 
     "render",
     "render/canvas",
