@@ -1733,6 +1733,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "headless"
+version = "0.1.0"
+dependencies = [
+ "ruffle_core",
+]
+
+[[package]]
 name = "heck"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
