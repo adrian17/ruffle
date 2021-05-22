@@ -34,7 +34,7 @@ use ruffle_render_wgpu::WgpuRenderBackend;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tinyfiledialogs::open_file_dialog;
+use tinyfiledialogs::{message_box_ok, open_file_dialog};
 use url::Url;
 
 use ruffle_core::tag_utils::SwfMovie;
@@ -586,6 +586,12 @@ fn init() {
 fn shutdown(result: &Result<(), Box<dyn std::error::Error>>) {
     if let Err(e) = result {
         eprintln!("Fatal error:\n{}", e);
+
+        message_box_ok(
+            "Ruffle error",
+            &format!("{}", e),
+            MessageBoxIcon::Warning,
+        );
     }
 
     // Without explicitly detaching the console cmd won't redraw it's prompt.
