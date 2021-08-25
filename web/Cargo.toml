@@ -13,7 +13,7 @@ publish = false # This crate is useless alone, people should use the npm package
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["canvas", "console_error_panic_hook", "webgl", "wgpu-webgl"]
+default = ["console_error_panic_hook", "webgl"]
 
 # core features
 avm_debug = ["ruffle_core/avm_debug"]
@@ -51,7 +51,7 @@ base64 = "0.21.0"
 [dependencies.ruffle_core]
 path = "../core"
 default-features = false
-features = ["audio", "mp3", "nellymoser", "wasm-bindgen"]
+features = ["mp3", "audio", "wasm-bindgen"]
 
 [dependencies.web-sys]
 version = "0.3.60"
@@ -59,6 +59,6 @@ features = [
     "AddEventListenerOptions", "AudioBuffer", "AudioBufferSourceNode", "AudioContext", "AudioDestinationNode",
     "AudioNode", "AudioParam", "Blob", "BlobPropertyBag", "ChannelMergerNode",
     "ChannelSplitterNode", "Element", "Event", "EventTarget", "GainNode", "HtmlCanvasElement",
-    "HtmlElement", "HtmlFormElement", "KeyboardEvent", "Location", "PointerEvent", "Request", "RequestInit", "Response",
+    "HtmlElement", "HtmlFormElement", "KeyboardEvent", "Location", "PointerEvent", "Request", "RequestInit", "Response", "CssStyleDeclaration", "Document",
     "Storage", "WheelEvent", "Window",
 ]
