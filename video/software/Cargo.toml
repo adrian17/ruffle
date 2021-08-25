@@ -26,7 +26,7 @@ nihav_codec_support = { git = "https://github.com/ruffle-rs/nihav-vp6", rev = "8
 nihav_duck = { git = "https://github.com/ruffle-rs/nihav-vp6", rev = "83c7e1094d603d9fc1212d39d99abb17f3a3226b", optional = true }
 
 [features]
-default = ["h263", "vp6", "screenvideo"]
+default = []
 h263 = ["h263-rs", "h263-rs-deblock"]
 vp6 = ["nihav_core", "nihav_codec_support", "nihav_duck"]
 screenvideo = []
