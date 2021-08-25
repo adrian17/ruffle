@@ -16,7 +16,7 @@ workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["canvas", "console_error_panic_hook", "webgl", "wgpu-webgl"]
+default = ["console_error_panic_hook", "webgl"]
 
 # core features
 avm_debug = ["ruffle_core/avm_debug"]
@@ -70,5 +70,6 @@ features = [
     "ChannelMergerNode", "ChannelSplitterNode", "ClipboardEvent", "DataTransfer", "Element", "Event",
     "EventTarget", "GainNode", "Headers", "HtmlCanvasElement", "HtmlDocument", "HtmlElement", "HtmlFormElement",
     "HtmlInputElement", "HtmlTextAreaElement", "KeyboardEvent", "Location", "PointerEvent",
-    "Request", "RequestInit", "Response", "Storage", "WheelEvent", "Window", "RequestCredentials"
+    "Request", "RequestInit", "Response", "Storage", "WheelEvent", "Window", "RequestCredentials",
+    "CssStyleDeclaration", "Document",
 ]
