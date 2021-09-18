@@ -502,6 +502,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
     ) -> Result<Value<'gc>, Error> {
         let superclass_object: Result<Object<'gc>, Error> = self
             .subclass_object()
+            .and_then(|c| c.as_class_object_really())
             .and_then(|c| c.superclass_object())
             .ok_or_else(|| {
                 "Attempted to call super constructor without a superclass."
@@ -1197,6 +1198,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
 
         let superclass_object: Result<Object<'gc>, Error> = self
             .subclass_object()
+            .and_then(|c| c.as_class_object_really())
             .and_then(|bc| bc.superclass_object())
             .ok_or_else(|| {
                 "Attempted to call super method without a superclass."
@@ -1229,6 +1231,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
 
         let superclass_object: Result<Object<'gc>, Error> = self
             .subclass_object()
+            .and_then(|c| c.as_class_object_really())
             .and_then(|bc| bc.superclass_object())
             .ok_or_else(|| {
                 "Attempted to call super method without a superclass."
@@ -1370,6 +1373,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
 
         let superclass_object: Result<Object<'gc>, Error> = self
             .subclass_object()
+            .and_then(|c| c.as_class_object_really())
             .and_then(|bc| bc.superclass_object())
             .ok_or_else(|| {
                 "Attempted to call super method without a superclass."
@@ -1401,6 +1405,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
 
         let superclass_object: Result<Object<'gc>, Error> = self
             .subclass_object()
+            .and_then(|c| c.as_class_object_really())
             .and_then(|bc| bc.superclass_object())
             .ok_or_else(|| {
                 "Attempted to call super method without a superclass."
