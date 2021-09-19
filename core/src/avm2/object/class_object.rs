@@ -129,7 +129,8 @@ impl<'gc> ClassObject<'gc> {
             ScriptObject::bare_object(activation.context.gc_context)
         };
 
-        let fn_proto = activation.avm2().prototypes().function;
+        let class_class = activation.avm2().classes().class;
+        let class_class_proto = activation.avm2().prototypes().class;
 
         let constructor = Executable::from_method(
             class.read().instance_init(),
@@ -147,7 +148,7 @@ impl<'gc> ClassObject<'gc> {
         let mut class_object = ClassObject(GcCell::allocate(
             activation.context.gc_context,
             ClassObjectData {
-                base: ScriptObjectData::base_new(Some(fn_proto), None),
+                base: ScriptObjectData::base_new(Some(class_class_proto), Some(class_class)),
                 class,
                 scope,
                 superclass_object,
@@ -163,6 +164,7 @@ impl<'gc> ClassObject<'gc> {
         class_object.link_prototype(activation, class_proto)?;
         class_object.link_interfaces(activation)?;
         class_object.install_traits(activation, class.read().class_traits())?;
+        class_object.install_instance_traits(activation, class_class)?;
         class_object.run_class_initializer(activation)?;
 
         Ok(class_object.into())
@@ -602,7 +604,8 @@ impl<'gc> TObject<'gc> for ClassObject<'gc> {
             ScriptObject::bare_object(activation.context.gc_context)
         };
 
-        let fn_proto = activation.avm2().prototypes().function;
+        let class_class = activation.avm2().classes().class;
+        let class_class_proto = activation.avm2().prototypes().class;
 
         let constructor = self.0.read().constructor.clone();
         let native_constructor = self.0.read().native_constructor.clone();
@@ -610,7 +613,7 @@ impl<'gc> TObject<'gc> for ClassObject<'gc> {
         let mut class_object = ClassObject(GcCell::allocate(
             activation.context.gc_context,
             ClassObjectData {
-                base: ScriptObjectData::base_new(Some(fn_proto), None),
+                base: ScriptObjectData::base_new(Some(class_class_proto), Some(class_class)),
                 class: parameterized_class,
                 scope,
                 superclass_object,
@@ -626,6 +629,7 @@ impl<'gc> TObject<'gc> for ClassObject<'gc> {
         class_object.link_prototype(activation, class_proto)?;
         class_object.link_interfaces(activation)?;
         class_object.install_traits(activation, parameterized_class.read().class_traits())?;
+        class_object.install_instance_traits(activation, class_class)?;
         class_object.run_class_initializer(activation)?;
 
         self.0
