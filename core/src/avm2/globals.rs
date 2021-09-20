@@ -279,17 +279,17 @@ impl<'gc> SystemClasses<'gc> {
 
 /// Add a free-function builtin to the global scope.
 fn function<'gc>(
-    mc: MutationContext<'gc, '_>,
+    activation: &mut Activation<'_, 'gc, '_>,
     package: impl Into<AvmString<'gc>>,
     name: &'static str,
     nf: NativeMethodImpl,
-    fn_proto: Object<'gc>,
     mut domain: Domain<'gc>,
     script: Script<'gc>,
 ) -> Result<(), Error> {
+    let mc = activation.context.gc_context;
     let qname = QName::new(Namespace::package(package), name);
     let method = Method::from_builtin(nf, name, mc);
-    let as3fn = FunctionObject::from_method_and_proto(mc, method, None, fn_proto, None).into();
+    let as3fn = FunctionObject::from_method(activation, method, None, None).into();
     domain.export_definition(qname.clone(), script, mc)?;
     script
         .init()
@@ -521,9 +521,9 @@ pub fn load_player_globals<'gc>(
     // globals scope *before* the `Object` class
     gs.set_proto(mc, activation.avm2().prototypes().global);
 
-    function(mc, "", "trace", trace, fn_proto, domain, script)?;
-    function(mc, "", "isFinite", is_finite, fn_proto, domain, script)?;
-    function(mc, "", "isNaN", is_nan, fn_proto, domain, script)?;
+    function(activation, "", "trace", trace, domain, script)?;
+    function(activation, "", "isFinite", is_finite, domain, script)?;
+    function(activation, "", "isNaN", is_nan, domain, script)?;
     constant(mc, "", "undefined", Value::Undefined, domain, script)?;
     constant(mc, "", "null", Value::Null, domain, script)?;
     constant(mc, "", "NaN", f64::NAN.into(), domain, script)?;
@@ -635,41 +635,37 @@ pub fn load_player_globals<'gc>(
     )?;
 
     function(
-        mc,
+        activation,
         "flash.utils",
         "getTimer",
         flash::utils::get_timer,
-        fn_proto,
         domain,
         script,
     )?;
 
     function(
-        mc,
+        activation,
         "flash.utils",
         "getQualifiedClassName",
         flash::utils::get_qualified_class_name,
-        fn_proto,
         domain,
         script,
     )?;
 
     function(
-        mc,
+        activation,
         "flash.utils",
         "getQualifiedSuperclassName",
         flash::utils::get_qualified_super_class_name,
-        fn_proto,
         domain,
         script,
     )?;
 
     function(
-        mc,
+        activation,
         "flash.utils",
         "getDefinitionByName",
         flash::utils::get_definition_by_name,
-        fn_proto,
         domain,
         script,
     )?;
@@ -925,11 +921,10 @@ pub fn load_player_globals<'gc>(
 
     // package `flash.crypto`
     function(
-        mc,
+        activation,
         "flash.crypto",
         "generateRandomBytes",
         flash::crypto::generate_random_bytes,
-        fn_proto,
         domain,
         script,
     )?;
