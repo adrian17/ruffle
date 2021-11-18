@@ -51,6 +51,7 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust_version }}
           target: wasm32-unknown-unknown
+          default: true
 
       # wasm-bindgen-cli version must match wasm-bindgen crate version.
       # Be sure to update in release_nightly.yml, web/Cargo.toml and web/README.md.
