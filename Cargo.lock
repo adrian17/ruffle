@@ -3535,7 +3535,6 @@ dependencies = [
  "image",
  "pretty_assertions",
  "ruffle_core",
- "ruffle_render_wgpu",
 ]
 
 [[package]]
