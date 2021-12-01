@@ -306,18 +306,14 @@ fn function<'gc>(
     nf: NativeMethodImpl,
     script: Script<'gc>,
 ) -> Result<(), Error> {
-    let (_, _, mut domain) = script.init();
+    let (_, mut global, mut domain) = script.init();
     let mc = activation.context.gc_context;
     let scope = activation.create_scopechain();
     let qname = QName::new(Namespace::package(package), name);
     let method = Method::from_builtin(nf, name, mc);
     let as3fn = FunctionObject::from_method(activation, method, scope, None, None).into();
     domain.export_definition(qname, script, mc)?;
-    script
-        .init()
-        .1
-        .install_dynamic_property(mc, qname, as3fn)
-        .unwrap();
+    global.install_const_late(mc, qname, as3fn);
 
     Ok(())
 }
@@ -335,7 +331,7 @@ fn dynamic_class<'gc>(
     let class = class_object.inner_class_definition();
     let name = class.read().name();
 
-    global.install_const(mc, name, 0, class_object.into());
+    global.install_const_late(mc, name, class_object.into());
     domain.export_definition(name, script, mc)
 }
 
@@ -376,10 +372,9 @@ fn class<'gc>(
     drop(class_read);
 
     let class_object = ClassObject::from_class(activation, class_def, super_class)?;
-    global.install_const(
+    global.install_const_late(
         activation.context.gc_context,
         class_name,
-        0,
         class_object.into(),
     );
     domain.export_definition(class_name, script, activation.context.gc_context)?;
@@ -406,7 +401,7 @@ fn constant<'gc>(
     let (_, mut global, mut domain) = script.init();
     let name = QName::new(Namespace::package(package), name);
     domain.export_definition(name, script, mc)?;
-    global.install_const(mc, name, 0, value);
+    global.install_const_late(mc, name, value);
 
     Ok(())
 }
@@ -513,9 +508,9 @@ pub fn load_player_globals<'gc>(
     // initializing the core class weave. The order of initialization shouldn't
     // matter here, as long as all the initialization machinery can see and
     // link the various system types together correctly.
-    let object_class = object_class.into_finished_class(activation)?;
-    let fn_class = fn_class.into_finished_class(activation)?;
     let class_class = class_class.into_finished_class(activation)?;
+    let fn_class = fn_class.into_finished_class(activation)?;
+    let object_class = object_class.into_finished_class(activation)?;
 
     dynamic_class(mc, object_class, script)?;
     dynamic_class(mc, fn_class, script)?;

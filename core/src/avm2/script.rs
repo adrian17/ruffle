@@ -381,12 +381,18 @@ impl<'gc> Script<'gc> {
 
             drop(write);
 
-            globals.install_traits(
-                &mut null_activation,
-                &self.traits()?,
-                ScopeChain::new(domain),
-                None,
-            )?;
+            // todo: what to do with these...?
+            println!("traits:");
+            for trait_ in self.traits()?.iter() {
+                println!("{:?}", trait_);
+            }
+
+            //globals.install_traits(
+            //    &mut null_activation,
+            //    &self.traits()?,
+            //    ScopeChain::new(domain),
+            //    None,
+            //)?;
 
             Avm2::run_script_initializer(*self, context)?;
 

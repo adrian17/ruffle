@@ -71,10 +71,9 @@ pub fn class_init<'gc>(
             .write(activation.context.gc_context)
             .set_name(int_vector_name);
 
-        globals.install_const(
+        globals.install_const_late(
             activation.context.gc_context,
             int_vector_name,
-            0,
             int_vector_class.into(),
         );
         domain.export_definition(int_vector_name, script, activation.context.gc_context)?;
@@ -87,10 +86,9 @@ pub fn class_init<'gc>(
             .write(activation.context.gc_context)
             .set_name(uint_vector_name);
 
-        globals.install_const(
+        globals.install_const_late(
             activation.context.gc_context,
             uint_vector_name,
-            0,
             uint_vector_class.into(),
         );
         domain.export_definition(uint_vector_name, script, activation.context.gc_context)?;
@@ -103,10 +101,9 @@ pub fn class_init<'gc>(
             .write(activation.context.gc_context)
             .set_name(number_vector_name);
 
-        globals.install_const(
+        globals.install_const_late(
             activation.context.gc_context,
             number_vector_name,
-            0,
             number_vector_class.into(),
         );
         domain.export_definition(number_vector_name, script, activation.context.gc_context)?;
@@ -118,10 +115,9 @@ pub fn class_init<'gc>(
             .write(activation.context.gc_context)
             .set_name(object_vector_name);
 
-        globals.install_const(
+        globals.install_const_late(
             activation.context.gc_context,
             object_vector_name,
-            0,
             object_vector_class.into(),
         );
         domain.export_definition(object_vector_name, script, activation.context.gc_context)?;
