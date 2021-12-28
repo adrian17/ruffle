@@ -14,6 +14,7 @@ use crate::backend::video::NullVideoBackend;
 use crate::context::ActionQueue;
 use crate::display_object::{MovieClip, Stage, TDisplayObject};
 use crate::focus_tracker::FocusTracker;
+use crate::frame_lifecycle::FramePhase;
 use crate::library::Library;
 use crate::loader::LoadManager;
 use crate::prelude::*;
@@ -41,6 +42,7 @@ where
         root.set_depth(gc_context, 0);
         let stage = Stage::empty(gc_context, 550, 400);
         let mut frame_rate = 12.0;
+        let mut frame_phase = FramePhase::Update;
         let globals = avm1.global_object_cell();
 
         let mut context = UpdateContext {
@@ -83,6 +85,7 @@ where
             time_offset: &mut 0,
             audio_manager: &mut AudioManager::new(),
             frame_rate: &mut frame_rate,
+            frame_phase: &mut frame_phase,
         };
         context.stage.replace_at_depth(&mut context, root, 0);
 

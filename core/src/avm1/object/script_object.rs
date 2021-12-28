@@ -557,6 +557,7 @@ mod tests {
     use crate::context::UpdateContext;
     use crate::display_object::{MovieClip, Stage};
     use crate::focus_tracker::FocusTracker;
+    use crate::frame_lifecycle::FramePhase;
     use crate::library::Library;
     use crate::loader::LoadManager;
     use crate::prelude::*;
@@ -582,6 +583,7 @@ mod tests {
 
             let stage = Stage::empty(gc_context, 550, 400);
             let mut frame_rate = 12.0;
+            let mut frame_phase = FramePhase::Update;
 
             let object = ScriptObject::object(gc_context, Some(avm1.prototypes().object)).into();
             let globals = avm1.global_object_cell();
@@ -626,6 +628,7 @@ mod tests {
                 times_get_time_called: 0,
                 time_offset: &mut 0,
                 frame_rate: &mut frame_rate,
+                frame_phase: &mut frame_phase,
             };
             context.stage.replace_at_depth(&mut context, root, 0);
 
