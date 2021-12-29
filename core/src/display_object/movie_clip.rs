@@ -1269,35 +1269,11 @@ impl<'gc> MovieClip<'gc> {
 
         let is_rewind = if frame < self.current_frame() {
             // Because we can only step forward, we have to start at frame 1
-            // when rewinding.
+            // when rewinding. We don't actually remove children yet because
+            // otherwise AS3 can observe byproducts of the rewinding process.
             self.0.write(context.gc_context).tag_stream_pos = 0;
             self.0.write(context.gc_context).current_frame = 0;
 
-            // Remove all display objects that were created after the destination frame.
-            // TODO: We want to do something like self.children.retain here,
-            // but BTreeMap::retain does not exist.
-            // TODO: AS3 children don't live on the depth list. Do they respect
-            // or ignore GOTOs?
-            let children: SmallVec<[_; 16]> = self
-                .0
-                .read()
-                .container
-                .iter_children_by_depth()
-                .filter_map(|(depth, clip)| {
-                    if clip.place_frame() > frame {
-                        Some((depth, clip))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            for (_depth, child) in children {
-                if !child.placed_by_script() {
-                    self.remove_child(context, child, Lists::all());
-                } else {
-                    self.remove_child(context, child, Lists::DEPTH);
-                }
-            }
             true
         } else {
             false
@@ -1359,10 +1335,12 @@ impl<'gc> MovieClip<'gc> {
         let hit_target_frame = self.0.read().current_frame == frame;
 
         // Run the list of goto commands to actually create and update the display objects.
+        let movie = self.movie();
         let run_goto_command = |clip: MovieClip<'gc>,
                                 context: &mut UpdateContext<'_, 'gc, '_>,
                                 params: &GotoPlaceObject<'_>| {
             use swf::PlaceObjectAction;
+            let movie = movie.clone();
             let child_entry = clip.child_by_depth(params.depth());
             match (params.place_object.action, child_entry, is_rewind) {
                 // Apply final delta to display parameters.
@@ -1373,11 +1351,11 @@ impl<'gc> MovieClip<'gc> {
                 // If it's a rewind, we removed any dead children above, so we always
                 // modify the previous child.
                 (_, Some(prev_child), true) | (PlaceObjectAction::Modify, Some(prev_child), _) => {
-                    prev_child.apply_place_object(context, self.movie(), &params.place_object);
+                    prev_child.apply_place_object(context, movie, &params.place_object);
                 }
                 (swf::PlaceObjectAction::Replace(id), Some(prev_child), _) => {
                     prev_child.replace_with(context, id);
-                    prev_child.apply_place_object(context, self.movie(), &params.place_object);
+                    prev_child.apply_place_object(context, movie, &params.place_object);
                     prev_child.set_place_frame(context.gc_context, params.frame);
                 }
                 (PlaceObjectAction::Place(id), _, _)
@@ -1397,6 +1375,39 @@ impl<'gc> MovieClip<'gc> {
                 }
             }
         };
+
+        if is_rewind {
+            // Remove all display objects that were created after the
+            // destination frame.
+            //
+            // We do this after reading the clip timeline so that AS3 can't
+            // observe side effects of the rewinding process.
+            //
+            // TODO: We want to do something like self.children.retain here,
+            // but BTreeMap::retain does not exist.
+            // TODO: AS3 children don't live on the depth list. Do they respect
+            // or ignore GOTOs?
+            let children: SmallVec<[_; 16]> = self
+                .0
+                .read()
+                .container
+                .iter_children_by_depth()
+                .filter_map(|(depth, clip)| {
+                    if clip.place_frame() > frame {
+                        Some((depth, clip))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for (_depth, child) in children {
+                if !child.placed_by_script() {
+                    self.remove_child(context, child, Lists::all());
+                } else {
+                    self.remove_child(context, child, Lists::DEPTH);
+                }
+            }
+        }
 
         // We have to be sure that queued actions are generated in the same order
         // as if the playhead had reached this frame normally.
