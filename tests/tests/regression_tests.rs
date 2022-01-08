@@ -352,6 +352,7 @@ swf_tests! {
     (as3_movieclip_gotoandstop_framescripts1, "avm2/movieclip_gotoandstop_framescripts1", 1),
     (as3_movieclip_gotoandstop_framescripts2, "avm2/movieclip_gotoandstop_framescripts2", 1),
     (as3_movieclip_gotoandstop_framescripts_self, "avm2/movieclip_gotoandstop_framescripts_self", 1),
+    (as3_movieclip_gotoandstop_queueing, "avm2/movieclip_gotoandstop_queueing", 2),
     (as3_movieclip_next_frame, "avm2/movieclip_next_frame", 5),
     (as3_movieclip_next_scene, "avm2/movieclip_next_scene", 5),
     (as3_movieclip_play, "avm2/movieclip_play", 5),
