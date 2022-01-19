@@ -142,9 +142,7 @@ pub fn clone<'gc>(
     _args: &[Value<'gc>],
 ) -> Result<Value<'gc>, Error> {
     if let Some(evt) = this.unwrap().as_event() {
-        let evt_class = activation.avm2().classes().event;
-
-        return Ok(EventObject::from_event(activation, evt_class, evt.clone())?.into());
+        return Ok(EventObject::from_event(activation, evt.clone())?.into());
     }
 
     Ok(Value::Undefined)
@@ -256,7 +254,21 @@ pub fn to_string<'gc>(
     _args: &[Value<'gc>],
 ) -> Result<Value<'gc>, Error> {
     if let Some(this) = this {
-        return this.value_of(activation.context.gc_context);
+        if let Some(event) = this.as_event() {
+            let event_type = event.event_type();
+            let bubbles = event.is_bubbling();
+            let cancelable = event.is_cancelable();
+            let phase = event.phase() as u32;
+
+            return Ok(AvmString::new_utf8(
+                activation.context.gc_context,
+                format!(
+                    "[Event type=\"{}\" bubbles={} cancelable={} eventPhase={}]",
+                    event_type, bubbles, cancelable, phase
+                ),
+            )
+            .into());
+        }
     }
 
     Ok(Value::Undefined)

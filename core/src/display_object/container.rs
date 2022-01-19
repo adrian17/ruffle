@@ -1,6 +1,6 @@
 //! Container mix-in for display objects
 
-use crate::avm2::{Avm2, Event as Avm2Event, Value as Avm2Value};
+use crate::avm2::{Avm2, Event as Avm2Event, EventData as Avm2EventData, Value as Avm2Value};
 use crate::context::{RenderContext, UpdateContext};
 use crate::display_object::avm1_button::Avm1Button;
 use crate::display_object::movie_clip::MovieClip;
@@ -22,7 +22,7 @@ pub fn dispatch_removed_from_stage_event<'gc>(
     context: &mut UpdateContext<'_, 'gc, '_>,
 ) {
     if let Avm2Value::Object(object) = child.object2() {
-        let mut removed_evt = Avm2Event::new("removedFromStage");
+        let mut removed_evt = Avm2Event::new("removedFromStage", Avm2EventData::Empty);
         removed_evt.set_bubbles(false);
         removed_evt.set_cancelable(false);
 
@@ -51,7 +51,7 @@ pub fn dispatch_removed_event<'gc>(
     context: &mut UpdateContext<'_, 'gc, '_>,
 ) {
     if let Avm2Value::Object(object) = child.object2() {
-        let mut removed_evt = Avm2Event::new("removed");
+        let mut removed_evt = Avm2Event::new("removed", Avm2EventData::Empty);
         removed_evt.set_bubbles(true);
         removed_evt.set_cancelable(false);
 
@@ -71,7 +71,7 @@ pub fn dispatch_added_to_stage_event_only<'gc>(
     context: &mut UpdateContext<'_, 'gc, '_>,
 ) {
     if let Avm2Value::Object(object) = child.object2() {
-        let mut removed_evt = Avm2Event::new("addedToStage");
+        let mut removed_evt = Avm2Event::new("addedToStage", Avm2EventData::Empty);
         removed_evt.set_bubbles(false);
         removed_evt.set_cancelable(false);
 
@@ -109,7 +109,7 @@ pub fn dispatch_added_event_only<'gc>(
     context: &mut UpdateContext<'_, 'gc, '_>,
 ) {
     if let Avm2Value::Object(object) = child.object2() {
-        let mut removed_evt = Avm2Event::new("added");
+        let mut removed_evt = Avm2Event::new("added", Avm2EventData::Empty);
         removed_evt.set_bubbles(true);
         removed_evt.set_cancelable(false);
 

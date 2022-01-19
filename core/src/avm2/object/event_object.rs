@@ -1,12 +1,11 @@
 //! Object representation for events
 
 use crate::avm2::activation::Activation;
-use crate::avm2::events::Event;
+use crate::avm2::events::{Event, EventData};
 use crate::avm2::object::script_object::ScriptObjectData;
 use crate::avm2::object::{ClassObject, Object, ObjectPtr, TObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
-use crate::string::AvmString;
 use gc_arena::{Collect, GcCell, MutationContext};
 use std::cell::{Ref, RefMut};
 
@@ -22,7 +21,7 @@ pub fn event_allocator<'gc>(
         activation.context.gc_context,
         EventObjectData {
             base,
-            event: Event::new(""),
+            event: Event::new("", EventData::Empty),
         },
     ))
     .into())
@@ -49,9 +48,14 @@ impl<'gc> EventObject<'gc> {
     /// we will pull the `prototype` off the `class` given to us.
     pub fn from_event(
         activation: &mut Activation<'_, 'gc, '_>,
-        class: ClassObject<'gc>,
         event: Event<'gc>,
     ) -> Result<Object<'gc>, Error> {
+        let class = match event.event_data() {
+            EventData::Empty => activation.avm2().classes().event,
+            EventData::FullScreen { .. } => activation.avm2().classes().fullscreenevent,
+            EventData::Mouse { .. } => activation.avm2().classes().mouseevent,
+        };
+
         let proto = class.prototype();
         let base = ScriptObjectData::base_new(Some(proto), Some(class));
 
@@ -82,21 +86,8 @@ impl<'gc> TObject<'gc> for EventObject<'gc> {
         self.0.as_ptr() as *const ObjectPtr
     }
 
-    fn value_of(&self, mc: MutationContext<'gc, '_>) -> Result<Value<'gc>, Error> {
-        let read = self.0.read();
-        let event_type = read.event.event_type();
-        let bubbles = read.event.is_bubbling();
-        let cancelable = read.event.is_cancelable();
-        let phase = read.event.phase() as u32;
-
-        Ok(AvmString::new_utf8(
-            mc,
-            format!(
-                "[Event type=\"{}\" bubbles={} cancelable={} eventPhase={}]",
-                event_type, bubbles, cancelable, phase
-            ),
-        )
-        .into())
+    fn value_of(&self, _mc: MutationContext<'gc, '_>) -> Result<Value<'gc>, Error> {
+        Ok(Value::Object((*self).into()))
     }
 
     fn as_event(&self) -> Option<Ref<Event<'gc>>> {

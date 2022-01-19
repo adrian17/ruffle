@@ -2,8 +2,9 @@
 
 use crate::avm1::Object as Avm1Object;
 use crate::avm2::{
-    Activation as Avm2Activation, Avm2, Event as Avm2Event, Object as Avm2Object,
-    ScriptObject as Avm2ScriptObject, StageObject as Avm2StageObject, Value as Avm2Value,
+    Activation as Avm2Activation, Avm2, Event as Avm2Event, EventData as Avm2EventData,
+    Object as Avm2Object, ScriptObject as Avm2ScriptObject, StageObject as Avm2StageObject,
+    Value as Avm2Value,
 };
 use crate::config::Letterbox;
 use crate::context::{RenderContext, UpdateContext};
@@ -559,7 +560,7 @@ impl<'gc> Stage<'gc> {
                 &[],
             );
         } else if let Avm2Value::Object(stage) = self.object2() {
-            let mut resized_event = Avm2Event::new("resize");
+            let mut resized_event = Avm2Event::new("resize", Avm2EventData::Empty);
             resized_event.set_bubbles(false);
             resized_event.set_cancelable(false);
             if let Err(e) = crate::avm2::Avm2::dispatch_event(context, resized_event, stage) {
@@ -581,16 +582,17 @@ impl<'gc> Stage<'gc> {
                 &[self.is_fullscreen().into()],
             );
         } else if let Avm2Value::Object(stage) = self.object2() {
-            let mut full_screen_event = Avm2Event::new("fullScreen");
+            let mut full_screen_event = Avm2Event::new(
+                "fullScreen",
+                Avm2EventData::FullScreen {
+                    full_screen: self.is_fullscreen(),
+                    interactive: true,
+                },
+            );
             full_screen_event.set_bubbles(false);
             full_screen_event.set_cancelable(false);
 
-            if let Err(e) = crate::avm2::Avm2::dispatch_event_with_class(
-                context,
-                full_screen_event,
-                context.avm2.classes().fullscreenevent,
-                stage,
-            ) {
+            if let Err(e) = crate::avm2::Avm2::dispatch_event(context, full_screen_event, stage) {
                 log::error!("Encountered AVM2 error when dispatching event: {}", e);
             }
         }
@@ -612,6 +614,11 @@ impl<'gc> TDisplayObject<'gc> for Stage<'gc> {
 
     fn as_ptr(&self) -> *const DisplayObjectPtr {
         self.0.as_ptr() as *const DisplayObjectPtr
+    }
+
+    fn local_to_global_matrix(&self) -> Matrix {
+        // TODO: See comments in DisplayObject::local_to_global_matrix.
+        Default::default()
     }
 
     fn post_instantiation(
@@ -686,8 +693,8 @@ impl<'gc> TDisplayObject<'gc> for Stage<'gc> {
         for child in self.iter_render_list() {
             child.enter_frame(context);
         }
-
-        let mut enter_frame_evt = Avm2Event::new("enterFrame");
+        
+        let mut enter_frame_evt = Avm2Event::new("enterFrame", Avm2EventData::Empty);
         enter_frame_evt.set_bubbles(false);
         enter_frame_evt.set_cancelable(false);
 
@@ -741,9 +748,11 @@ impl<'gc> TInteractiveObject<'gc> for Stage<'gc> {
 
     fn event_dispatch(
         self,
-        _context: &mut UpdateContext<'_, 'gc, '_>,
-        _event: ClipEvent,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        event: ClipEvent<'gc>,
     ) -> ClipEventResult {
+        self.event_dispatch_to_avm2(context, event);
+
         ClipEventResult::Handled
     }
 }

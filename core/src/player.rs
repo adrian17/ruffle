@@ -19,8 +19,8 @@ use crate::config::Letterbox;
 use crate::context::{ActionQueue, ActionType, RenderContext, UpdateContext};
 use crate::context_menu::{ContextMenuCallback, ContextMenuItem, ContextMenuState};
 use crate::display_object::{
-    EditText, MorphShape, MovieClip, Stage, StageAlign, StageDisplayState, StageQuality,
-    StageScaleMode, TInteractiveObject,
+    EditText, InteractiveObject, MorphShape, MovieClip, Stage, StageAlign, StageDisplayState,
+    StageQuality, StageScaleMode, TInteractiveObject,
 };
 use crate::events::{ButtonKeyCode, ClipEvent, ClipEventResult, KeyCode, MouseButton, PlayerEvent};
 use crate::external::Value as ExternalValue;
@@ -66,10 +66,10 @@ struct GcRootData<'gc> {
     stage: Stage<'gc>,
 
     /// The display object that the mouse is currently hovering over.
-    mouse_hovered_object: Option<DisplayObject<'gc>>,
+    mouse_hovered_object: Option<InteractiveObject<'gc>>,
 
     /// If the mouse is down, the display object that the mouse is currently pressing.
-    mouse_pressed_object: Option<DisplayObject<'gc>>,
+    mouse_pressed_object: Option<InteractiveObject<'gc>>,
 
     /// The object being dragged via a `startDrag` action.
     drag_object: Option<DragObject<'gc>>,
@@ -920,30 +920,31 @@ impl Player {
             }
         }
 
-        // Propagate button events.
-        let button_event = match event {
-            // ASCII characters convert directly to keyPress button events.
-            PlayerEvent::TextInput { codepoint }
-                if codepoint as u32 >= 32 && codepoint as u32 <= 126 =>
-            {
-                Some(ClipEvent::KeyPress {
-                    key_code: ButtonKeyCode::from_u8(codepoint as u8).unwrap(),
-                })
-            }
-            // Special keys have custom values for keyPress.
-            PlayerEvent::KeyDown { key_code, .. } => {
-                if let Some(key_code) = crate::events::key_code_to_button_key_code(key_code) {
-                    Some(ClipEvent::KeyPress { key_code })
-                } else {
-                    None
+        self.mutate_with_update_context(|context| {
+            // Propagate button events.
+            let button_event = match event {
+                // ASCII characters convert directly to keyPress button events.
+                PlayerEvent::TextInput { codepoint }
+                    if codepoint as u32 >= 32 && codepoint as u32 <= 126 =>
+                {
+                    Some(ClipEvent::KeyPress {
+                        key_code: ButtonKeyCode::from_u8(codepoint as u8).unwrap(),
+                    })
                 }
-            }
-            _ => None,
-        };
 
-        let mut key_press_handled = false;
-        if let Some(button_event) = button_event {
-            self.mutate_with_update_context(|context| {
+                // Special keys have custom values for keyPress.
+                PlayerEvent::KeyDown { key_code, .. } => {
+                    if let Some(key_code) = crate::events::key_code_to_button_key_code(key_code) {
+                        Some(ClipEvent::KeyPress { key_code })
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            let mut key_press_handled = false;
+            if let Some(button_event) = button_event {
                 let levels: Vec<_> = context.stage.iter_depth_list().collect();
                 for (_depth, level) in levels {
                     let state = if let Some(interactive) = level.as_interactive() {
@@ -954,7 +955,7 @@ impl Player {
 
                     if state == ClipEventResult::Handled {
                         key_press_handled = true;
-                        return;
+                        break;
                     } else if let Some(text) =
                         context.focus_tracker.get().and_then(|o| o.as_edit_text())
                     {
@@ -963,26 +964,22 @@ impl Player {
                             == ClipEventResult::Handled
                         {
                             key_press_handled = true;
-                            return;
+                            break;
                         }
                     }
                 }
-            });
-        }
+            }
 
-        // keyPress events take precedence over text input.
-        if !key_press_handled {
-            if let PlayerEvent::TextInput { codepoint } = event {
-                self.mutate_with_update_context(|context| {
+            // keyPress events take precedence over text input.
+            if !key_press_handled {
+                if let PlayerEvent::TextInput { codepoint } = event {
                     if let Some(text) = context.focus_tracker.get().and_then(|o| o.as_edit_text()) {
                         text.text_input(codepoint, context);
                     }
-                });
+                }
             }
-        }
 
-        // Propagate clip events.
-        self.mutate_with_update_context(|context| {
+            // Propagate clip events.
             let (clip_event, listener) = match event {
                 PlayerEvent::KeyDown { .. } => {
                     (Some(ClipEvent::KeyDown), Some(("Key", "onKeyDown", vec![])))
@@ -1056,12 +1053,29 @@ impl Player {
         {
             let inverse_view_matrix =
                 self.mutate_with_update_context(|context| context.stage.inverse_view_matrix());
+            let old_pos = self.mouse_pos;
             self.mouse_pos = inverse_view_matrix * (Twips::from_pixels(x), Twips::from_pixels(y));
 
+            let is_mouse_moved = old_pos != self.mouse_pos;
+
             // This fires button rollover/press events, which should run after the above mouseMove events.
-            if self.update_mouse_state(is_mouse_button_changed) {
+            if self.update_mouse_state(is_mouse_button_changed, is_mouse_moved) {
                 self.needs_render = true;
             }
+        }
+
+        if let PlayerEvent::MouseWheel { delta } = event {
+            self.mutate_with_update_context(|context| {
+                if let Some(over_object) = context.mouse_over_object {
+                    if !over_object.as_displayobject().removed() {
+                        over_object.handle_clip_event(context, ClipEvent::MouseWheel { delta });
+                    }
+                } else {
+                    context
+                        .stage
+                        .handle_clip_event(context, ClipEvent::MouseWheel { delta });
+                }
+            });
         }
     }
 
@@ -1097,9 +1111,14 @@ impl Player {
                                 .iter_depth_list()
                                 .rev()
                                 .find_map(|(_depth, level)| {
-                                    level.mouse_pick(context, *context.mouse_position, false)
+                                    level.as_interactive().and_then(|l| {
+                                        l.mouse_pick(context, *context.mouse_position, false)
+                                    })
                                 });
-                        movie_clip.set_drop_target(context.gc_context, drop_target_object);
+                        movie_clip.set_drop_target(
+                            context.gc_context,
+                            drop_target_object.map(|d| d.as_displayobject()),
+                        );
                         display_object.set_visible(context.gc_context, was_visible);
                     }
                 }
@@ -1108,7 +1127,7 @@ impl Player {
     }
 
     /// Updates the hover state of buttons.
-    fn update_mouse_state(&mut self, is_mouse_button_changed: bool) -> bool {
+    fn update_mouse_state(&mut self, is_mouse_button_changed: bool, is_mouse_moved: bool) -> bool {
         let mut new_cursor = self.mouse_cursor;
 
         // Determine the display object the mouse is hovering over.
@@ -1120,54 +1139,85 @@ impl Player {
                     .iter_depth_list()
                     .rev()
                     .find_map(|(_depth, level)| {
-                        level.mouse_pick(context, *context.mouse_position, true)
+                        level
+                            .as_interactive()
+                            .and_then(|l| l.mouse_pick(context, *context.mouse_position, true))
                     });
 
-            let mut events: smallvec::SmallVec<[(DisplayObject<'_>, ClipEvent); 2]> =
+            let mut events: smallvec::SmallVec<[(InteractiveObject<'_>, ClipEvent); 2]> =
                 Default::default();
+
+            if is_mouse_moved {
+                events.push((
+                    new_over_object.unwrap_or_else(|| context.stage.into()),
+                    ClipEvent::MouseMoveInside,
+                ));
+            }
 
             // Cancel hover if an object is removed from the stage.
             if let Some(hovered) = context.mouse_over_object {
-                if hovered.removed() {
+                if hovered.as_displayobject().removed() {
                     context.mouse_over_object = None;
                 }
             }
             if let Some(pressed) = context.mouse_down_object {
-                if pressed.removed() {
+                if pressed.as_displayobject().removed() {
                     context.mouse_down_object = None;
                 }
             }
 
             let cur_over_object = context.mouse_over_object;
             // Check if a new object has been hovered over.
-            if !DisplayObject::option_ptr_eq(cur_over_object, new_over_object) {
+            if !InteractiveObject::option_ptr_eq(cur_over_object, new_over_object) {
                 // If the mouse button is down, the object the user clicked on grabs the focus
                 // and fires "drag" events. Other objects are ignroed.
                 if context.input.is_mouse_down() {
                     context.mouse_over_object = new_over_object;
                     if let Some(down_object) = context.mouse_down_object {
-                        if DisplayObject::option_ptr_eq(context.mouse_down_object, cur_over_object)
-                        {
+                        if InteractiveObject::option_ptr_eq(
+                            context.mouse_down_object,
+                            cur_over_object,
+                        ) {
                             // Dragged from outside the clicked object to the inside.
-                            events.push((down_object, ClipEvent::DragOut));
-                        } else if DisplayObject::option_ptr_eq(
+                            events.push((
+                                down_object,
+                                ClipEvent::DragOut {
+                                    to: new_over_object,
+                                },
+                            ));
+                        } else if InteractiveObject::option_ptr_eq(
                             context.mouse_down_object,
                             new_over_object,
                         ) {
                             // Dragged from inside the clicked object to the outside.
-                            events.push((down_object, ClipEvent::DragOver));
+                            events.push((
+                                down_object,
+                                ClipEvent::DragOver {
+                                    from: cur_over_object,
+                                },
+                            ));
                         }
                     }
                 } else {
                     // The mouse button is up, so fire rollover states for the object we are hovering over.
                     // Rolled out of the previous object.
                     if let Some(cur_over_object) = cur_over_object {
-                        events.push((cur_over_object, ClipEvent::RollOut));
+                        events.push((
+                            cur_over_object,
+                            ClipEvent::RollOut {
+                                to: new_over_object,
+                            },
+                        ));
                     }
                     // Rolled over the new object.
                     if let Some(new_over_object) = new_over_object {
-                        new_cursor = new_over_object.mouse_cursor();
-                        events.push((new_over_object, ClipEvent::RollOver));
+                        new_cursor = new_over_object.mouse_cursor(context);
+                        events.push((
+                            new_over_object,
+                            ClipEvent::RollOver {
+                                from: cur_over_object,
+                            },
+                        ));
                     } else {
                         new_cursor = MouseCursor::Arrow;
                     }
@@ -1182,9 +1232,17 @@ impl Player {
                     if let Some(over_object) = context.mouse_over_object {
                         events.push((over_object, ClipEvent::Press));
                         context.mouse_down_object = context.mouse_over_object;
+                    } else {
+                        events.push((context.stage.into(), ClipEvent::Press));
                     }
                 } else {
-                    let released_inside = DisplayObject::option_ptr_eq(
+                    if let Some(over_object) = context.mouse_over_object {
+                        events.push((over_object, ClipEvent::MouseUpInside));
+                    } else {
+                        events.push((context.stage.into(), ClipEvent::MouseUpInside));
+                    }
+
+                    let released_inside = InteractiveObject::option_ptr_eq(
                         context.mouse_down_object,
                         context.mouse_over_object,
                     );
@@ -1192,16 +1250,25 @@ impl Player {
                         // Released inside the clicked object.
                         if let Some(down_object) = context.mouse_down_object {
                             events.push((down_object, ClipEvent::Release));
+                        } else {
+                            events.push((context.stage.into(), ClipEvent::Release));
                         }
                     } else {
                         // Released outside the clicked object.
                         if let Some(down_object) = context.mouse_down_object {
                             events.push((down_object, ClipEvent::ReleaseOutside));
+                        } else {
+                            events.push((context.stage.into(), ClipEvent::ReleaseOutside));
                         }
                         // The new object is rolled over immediately.
                         if let Some(over_object) = context.mouse_over_object {
-                            new_cursor = over_object.mouse_cursor();
-                            events.push((over_object, ClipEvent::RollOver));
+                            new_cursor = over_object.mouse_cursor(context);
+                            events.push((
+                                over_object,
+                                ClipEvent::RollOver {
+                                    from: cur_over_object,
+                                },
+                            ));
                         } else {
                             new_cursor = MouseCursor::Arrow;
                         }
@@ -1215,10 +1282,8 @@ impl Player {
                 false
             } else {
                 for (object, event) in events {
-                    if !object.removed() {
-                        if let Some(interactive) = object.as_interactive() {
-                            interactive.handle_clip_event(context, event);
-                        }
+                    if !object.as_displayobject().removed() {
+                        object.handle_clip_event(context, event);
                     }
                 }
                 true
@@ -1607,7 +1672,7 @@ impl Player {
         });
 
         // Update mouse state (check for new hovered button, etc.)
-        self.update_mouse_state(false);
+        self.update_mouse_state(false, false);
 
         // GC
         self.gc_arena.collect_debt();

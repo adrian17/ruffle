@@ -3,8 +3,8 @@ use crate::avm1::{
 };
 use crate::avm2::{
     Activation as Avm2Activation, Avm2, Error as Avm2Error, Event as Avm2Event,
-    Namespace as Avm2Namespace, Object as Avm2Object, QName as Avm2QName, TObject as Avm2TObject,
-    Value as Avm2Value,
+    EventData as Avm2EventData, Namespace as Avm2Namespace, Object as Avm2Object,
+    QName as Avm2QName, TObject as Avm2TObject, Value as Avm2Value,
 };
 use crate::context::{RenderContext, UpdateContext};
 use crate::drawing::Drawing;
@@ -37,7 +37,6 @@ mod text;
 mod video;
 
 use crate::avm1::activation::Activation;
-use crate::backend::ui::MouseCursor;
 pub use crate::display_object::container::{
     DisplayObjectContainer, Lists, TDisplayObjectContainer,
 };
@@ -579,6 +578,8 @@ pub trait TDisplayObject<'gc>:
             // mode and alignment transform, but the AS APIs expect "global" to be relative to the
             // Stage, not final view coordinates.
             // I suspect we want this to include the stage transform eventually.
+            // NOTE: If we do, make sure to remove the override of this
+            // function on `Stage`.
             if display_object.as_stage().is_some() {
                 break;
             }
@@ -1065,7 +1066,7 @@ pub trait TDisplayObject<'gc>:
     /// Emit a `frameConstructed` event on this DisplayObject and any children it
     /// may have.
     fn frame_constructed(&self, context: &mut UpdateContext<'_, 'gc, '_>) {
-        let mut frame_constructed_evt = Avm2Event::new("frameConstructed");
+        let mut frame_constructed_evt = Avm2Event::new("frameConstructed", Avm2EventData::Empty);
         frame_constructed_evt.set_bubbles(false);
         frame_constructed_evt.set_cancelable(false);
 
@@ -1090,7 +1091,7 @@ pub trait TDisplayObject<'gc>:
 
     /// Emit an `exitFrame` broadcast event.
     fn exit_frame(&self, context: &mut UpdateContext<'_, 'gc, '_>) {
-        let mut exit_frame_evt = Avm2Event::new("exitFrame");
+        let mut exit_frame_evt = Avm2Event::new("exitFrame", Avm2EventData::Empty);
         exit_frame_evt.set_bubbles(false);
         exit_frame_evt.set_cancelable(false);
 
@@ -1271,16 +1272,6 @@ pub trait TDisplayObject<'gc>:
         self.hit_test_bounds(pos)
     }
 
-    #[allow(unused_variables)]
-    fn mouse_pick(
-        &self,
-        context: &mut UpdateContext<'_, 'gc, '_>,
-        pos: (Twips, Twips),
-        require_button_mode: bool,
-    ) -> Option<DisplayObject<'gc>> {
-        None
-    }
-
     fn post_instantiation(
         &self,
         context: &mut UpdateContext<'_, 'gc, '_>,
@@ -1314,11 +1305,6 @@ pub trait TDisplayObject<'gc>:
     /// This is used by movie clips to disable the mask when there are no children, for example.
     fn allow_as_mask(&self) -> bool {
         true
-    }
-
-    /// The cursor to use when this object is the hovered element under a mouse.
-    fn mouse_cursor(&self) -> MouseCursor {
-        MouseCursor::Hand
     }
 
     /// Obtain the top-most non-Stage parent of the display tree hierarchy, if

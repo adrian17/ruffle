@@ -95,7 +95,13 @@ pub struct MovieClipData<'gc> {
     is_focusable: bool,
     has_focus: bool,
     enabled: bool,
+
+    /// Show a hand cursor when the clip is in button mode.
     use_hand_cursor: bool,
+
+    /// Force enable button mode, which causes all mouse-related events to
+    /// trigger on this clip rather than any input-eligible children.
+    button_mode: bool,
     last_queued_script_frame: Option<FrameNumber>,
     queued_script_frame: Option<FrameNumber>,
     queued_goto_frame: Option<FrameNumber>,
@@ -125,6 +131,7 @@ impl<'gc> MovieClip<'gc> {
                 has_focus: false,
                 enabled: true,
                 use_hand_cursor: true,
+                button_mode: false,
                 last_queued_script_frame: None,
                 queued_script_frame: None,
                 queued_goto_frame: None,
@@ -160,6 +167,7 @@ impl<'gc> MovieClip<'gc> {
                 has_focus: false,
                 enabled: true,
                 use_hand_cursor: true,
+                button_mode: false,
                 last_queued_script_frame: None,
                 queued_script_frame: None,
                 queued_goto_frame: None,
@@ -198,6 +206,7 @@ impl<'gc> MovieClip<'gc> {
                 has_focus: false,
                 enabled: true,
                 use_hand_cursor: true,
+                button_mode: false,
                 last_queued_script_frame: None,
                 queued_script_frame: None,
                 queued_goto_frame: None,
@@ -233,6 +242,7 @@ impl<'gc> MovieClip<'gc> {
                 has_focus: false,
                 enabled: true,
                 use_hand_cursor: true,
+                button_mode: false,
                 last_queued_script_frame: None,
                 queued_script_frame: None,
                 queued_goto_frame: None,
@@ -1767,12 +1777,25 @@ impl<'gc> MovieClip<'gc> {
         self.0.read().tag_stream_len()
     }
 
+    pub fn forced_button_mode(self) -> bool {
+        self.0.read().button_mode
+    }
+
+    pub fn set_forced_button_mode(
+        self,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        button_mode: bool,
+    ) {
+        self.0.write(context.gc_context).button_mode = button_mode;
+    }
+
     pub fn is_button_mode(&self, context: &mut UpdateContext<'_, 'gc, '_>) -> bool {
-        if self
-            .0
-            .read()
-            .clip_event_flags
-            .intersects(ClipEvent::BUTTON_EVENT_FLAGS)
+        if self.forced_button_mode()
+            || self
+                .0
+                .read()
+                .clip_event_flags
+                .intersects(ClipEvent::BUTTON_EVENT_FLAGS)
         {
             true
         } else {
@@ -2059,82 +2082,6 @@ impl<'gc> TDisplayObject<'gc> for MovieClip<'gc> {
         false
     }
 
-    fn mouse_pick(
-        &self,
-        context: &mut UpdateContext<'_, 'gc, '_>,
-        point: (Twips, Twips),
-        require_button_mode: bool,
-    ) -> Option<DisplayObject<'gc>> {
-        if self.visible() {
-            let this: DisplayObject<'gc> = (*self).into();
-
-            if let Some(masker) = self.masker() {
-                if !masker.hit_test_shape(context, point, HitTestOptions::SKIP_INVISIBLE) {
-                    return None;
-                }
-            }
-
-            if self.world_bounds().contains(point) {
-                // This MovieClip operates in "button mode" if it has a mouse handler,
-                // either via on(..) or via property mc.onRelease, etc.
-                let is_button_mode = self.is_button_mode(context);
-
-                if is_button_mode {
-                    let mut options = HitTestOptions::SKIP_INVISIBLE;
-                    options.set(HitTestOptions::SKIP_MASK, self.maskee().is_none());
-                    if self.hit_test_shape(context, point, options) {
-                        return Some(this);
-                    }
-                }
-            }
-
-            // Maybe we could skip recursing down at all if !world_bounds.contains(point),
-            // but a child button can have an invisible hit area outside the parent's bounds.
-            let mut hit_depth = 0;
-            let mut result = None;
-
-            for child in self.iter_render_list().rev() {
-                if child.clip_depth() > 0 {
-                    if result.is_some() && child.clip_depth() >= hit_depth {
-                        if child.hit_test_shape(context, point, HitTestOptions::MOUSE_PICK) {
-                            return result;
-                        } else {
-                            result = None;
-                        }
-                    }
-                } else if result.is_none() {
-                    result = child.mouse_pick(context, point, require_button_mode);
-
-                    if result.is_some() {
-                        hit_depth = child.depth();
-                    }
-                }
-            }
-
-            if result.is_some() {
-                return result;
-            }
-
-            if !require_button_mode {
-                let mut options = HitTestOptions::SKIP_INVISIBLE;
-                options.set(HitTestOptions::SKIP_MASK, self.maskee().is_none());
-                if self.hit_test_shape(context, point, options) {
-                    return Some(this);
-                }
-            }
-        }
-
-        None
-    }
-
-    fn mouse_cursor(&self) -> MouseCursor {
-        if self.use_hand_cursor() {
-            MouseCursor::Hand
-        } else {
-            MouseCursor::Arrow
-        }
-    }
-
     fn as_movie_clip(&self) -> Option<MovieClip<'gc>> {
         Some(*self)
     }
@@ -2278,14 +2225,14 @@ impl<'gc> TInteractiveObject<'gc> for MovieClip<'gc> {
     fn event_dispatch(
         self,
         context: &mut UpdateContext<'_, 'gc, '_>,
-        event: ClipEvent,
+        event: ClipEvent<'gc>,
     ) -> ClipEventResult {
         let frame_name = match event {
-            ClipEvent::RollOut | ClipEvent::ReleaseOutside => Some(WStr::from_units(b"_up")),
-            ClipEvent::RollOver | ClipEvent::Release | ClipEvent::DragOut => {
+            ClipEvent::RollOut { .. } | ClipEvent::ReleaseOutside => Some(WStr::from_units(b"_up")),
+            ClipEvent::RollOver { .. } | ClipEvent::Release | ClipEvent::DragOut { .. } => {
                 Some(WStr::from_units(b"_over"))
             }
-            ClipEvent::Press | ClipEvent::DragOver => Some(WStr::from_units(b"_down")),
+            ClipEvent::Press | ClipEvent::DragOver { .. } => Some(WStr::from_units(b"_down")),
             _ => None,
         };
 
@@ -2302,27 +2249,30 @@ impl<'gc> TInteractiveObject<'gc> for MovieClip<'gc> {
         if let Some(AvmObject::Avm1(object)) = read.object {
             let swf_version = read.movie().version();
             if swf_version >= 5 {
-                for event_handler in read
-                    .clip_event_handlers
-                    .iter()
-                    .filter(|handler| handler.events.contains(event.flag()))
-                {
-                    // KeyPress event must have matching key code.
-                    if let ClipEvent::KeyPress { key_code } = event {
-                        if key_code == event_handler.key_code {
-                            // KeyPress events are consumed by a single instance.
-                            handled = ClipEventResult::Handled;
-                        } else {
-                            continue;
+                if let Some(flag) = event.flag() {
+                    for event_handler in read
+                        .clip_event_handlers
+                        .iter()
+                        .filter(|handler| handler.events.contains(flag))
+                    {
+                        // KeyPress event must have matching key code.
+                        if let ClipEvent::KeyPress { key_code } = event {
+                            if key_code == event_handler.key_code {
+                                // KeyPress events are consumed by a single instance.
+                                handled = ClipEventResult::Handled;
+                            } else {
+                                continue;
+                            }
                         }
+
+                        context.action_queue.queue_actions(
+                            self.into(),
+                            ActionType::Normal {
+                                bytecode: event_handler.action_data.clone(),
+                            },
+                            event == ClipEvent::Unload,
+                        );
                     }
-                    context.action_queue.queue_actions(
-                        self.into(),
-                        ActionType::Normal {
-                            bytecode: event_handler.action_data.clone(),
-                        },
-                        event == ClipEvent::Unload,
-                    );
                 }
 
                 // Queue ActionScript-defined event handlers after the SWF defined ones.
@@ -2344,9 +2294,92 @@ impl<'gc> TInteractiveObject<'gc> for MovieClip<'gc> {
                     }
                 }
             }
+        } else {
+            drop(read);
+            handled = self.event_dispatch_to_avm2(context, event);
         }
 
         handled
+    }
+
+    fn mouse_pick(
+        &self,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        point: (Twips, Twips),
+        require_button_mode: bool,
+    ) -> Option<InteractiveObject<'gc>> {
+        if self.visible() && self.mouse_enabled() {
+            let this: InteractiveObject<'gc> = (*self).into();
+
+            if let Some(masker) = self.masker() {
+                if !masker.hit_test_shape(context, point, HitTestOptions::SKIP_INVISIBLE) {
+                    return None;
+                }
+            }
+
+            if self.world_bounds().contains(point) {
+                // This MovieClip operates in "button mode" if it has a mouse handler,
+                // either via on(..) or via property mc.onRelease, etc.
+                let is_button_mode = self.is_button_mode(context);
+
+                if is_button_mode {
+                    let mut options = HitTestOptions::SKIP_INVISIBLE;
+                    options.set(HitTestOptions::SKIP_MASK, self.maskee().is_none());
+                    if self.hit_test_shape(context, point, options) {
+                        return Some(this);
+                    }
+                }
+            }
+
+            // Maybe we could skip recursing down at all if !world_bounds.contains(point),
+            // but a child button can have an invisible hit area outside the parent's bounds.
+            let mut hit_depth = 0;
+            let mut result = None;
+
+            for child in self.iter_render_list().rev() {
+                if child.clip_depth() > 0 {
+                    if result.is_some() && child.clip_depth() >= hit_depth {
+                        if child.hit_test_shape(context, point, HitTestOptions::MOUSE_PICK) {
+                            return result;
+                        } else {
+                            result = None;
+                        }
+                    }
+                } else if result.is_none() {
+                    result = child
+                        .as_interactive()
+                        .and_then(|c| c.mouse_pick(context, point, require_button_mode));
+
+                    if result.is_some() {
+                        hit_depth = child.depth();
+                    }
+                }
+            }
+
+            if result.is_some() {
+                return result;
+            }
+
+            // AVM2 allows movie clips to recieve mouse events without
+            // explicitly enabling button mode.
+            if !require_button_mode || matches!(self.object2(), Avm2Value::Object(_)) {
+                let mut options = HitTestOptions::SKIP_INVISIBLE;
+                options.set(HitTestOptions::SKIP_MASK, self.maskee().is_none());
+                if self.hit_test_shape(context, point, options) {
+                    return Some(this);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn mouse_cursor(self, context: &mut UpdateContext<'_, 'gc, '_>) -> MouseCursor {
+        if self.use_hand_cursor() && self.is_button_mode(context) {
+            MouseCursor::Hand
+        } else {
+            MouseCursor::Arrow
+        }
     }
 }
 
