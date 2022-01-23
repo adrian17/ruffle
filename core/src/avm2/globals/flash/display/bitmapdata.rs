@@ -3,7 +3,7 @@
 use crate::avm2::activation::Activation;
 use crate::avm2::class::{Class, ClassAttributes};
 use crate::avm2::method::{Method, NativeMethodImpl};
-use crate::avm2::names::{Namespace, QName};
+use crate::avm2::names::{Namespace, QName, Multiname};
 use crate::avm2::object::{bitmapdata_allocator, Object, TObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
@@ -180,6 +180,112 @@ pub fn get_pixel<'gc>(
     Ok(Value::Undefined)
 }
 
+/// Implements `BitmapData.scroll`.
+pub fn scroll<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    if let Some(bitmap_data) = this.and_then(|t| t.as_bitmap_data()) {
+        let x = args
+            .get(0)
+            .unwrap_or(&Value::Undefined)
+            .coerce_to_i32(activation)?;
+        let y = args
+            .get(1)
+            .unwrap_or(&Value::Undefined)
+            .coerce_to_i32(activation)?;
+
+        bitmap_data
+            .write(activation.context.gc_context)
+            .scroll(x, y);
+    }
+
+    Ok(Value::Undefined)
+}
+
+/// Implements `BitmapData.copyPixels`.
+pub fn copy_pixels<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    if let Some(bitmap_data) = this.and_then(|t| t.as_bitmap_data()) {
+        let source_bitmap = args
+            .get(0)
+            .unwrap_or(&Value::Undefined)
+            .coerce_to_object(activation)?;
+
+        let source_rect = args
+            .get(1)
+            .unwrap_or(&Value::Undefined)
+            .coerce_to_object(activation)?;
+
+        let src_min_x = source_rect
+            .get_property(&Multiname::public("x"), activation)?
+            .coerce_to_i32(activation)?;
+        let src_min_y = source_rect
+            .get_property(&Multiname::public("y"), activation)?
+            .coerce_to_i32(activation)?;
+        let src_width = source_rect
+            .get_property(&Multiname::public("width"), activation)?
+            .coerce_to_i32(activation)?;
+        let src_height = source_rect
+            .get_property(&Multiname::public("height"), activation)?
+            .coerce_to_i32(activation)?;
+
+        let dest_point = args
+            .get(2)
+            .unwrap_or(&Value::Undefined)
+            .coerce_to_object(activation)?;
+
+        let dest_x = dest_point
+            .get_property(&Multiname::public("x"), activation)?
+            .coerce_to_i32(activation)?;
+        let dest_y = dest_point
+            .get_property(&Multiname::public("y"), activation)?
+            .coerce_to_i32(activation)?;
+
+        if let Some(src_bitmap) = source_bitmap.as_bitmap_data() {
+            // dealing with object aliasing...
+            let src_bitmap_clone: BitmapData; // only initialized if source is the same object as self
+            let src_bitmap_data_cell = src_bitmap;
+            let src_bitmap_gc_ref; // only initialized if source is a different object than self
+            let source_bitmap_ref = // holds the reference to either of the ones above
+                if GcCell::ptr_eq(src_bitmap, bitmap_data) {
+                    src_bitmap_clone = src_bitmap_data_cell.read().clone();
+                    &src_bitmap_clone
+                } else {
+                    src_bitmap_gc_ref = src_bitmap_data_cell.read();
+                    &src_bitmap_gc_ref
+                };
+
+
+            // TODO: alpha args
+            bitmap_data
+                .write(activation.context.gc_context)
+                .copy_pixels(
+                    source_bitmap_ref,
+                    (src_min_x, src_min_y, src_width, src_height),
+                    (dest_x, dest_y),
+                    None,
+                );
+        }
+    }
+
+    Ok(Value::Undefined)
+}
+
+/// Implements `BitmapData.lock`.
+pub fn lock<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    _this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    log::warn!("BitmapData.lock - not yet implemented");
+    Ok(Value::Undefined)
+}
+
 /// Construct `BitmapData`'s class.
 pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>> {
     let class = Class::new(
@@ -208,7 +314,13 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
     ];
     write.define_public_builtin_instance_properties(mc, PUBLIC_INSTANCE_PROPERTIES);
 
-    const PUBLIC_INSTANCE_METHODS: &[(&str, NativeMethodImpl)] = &[("getPixel", get_pixel)];
+    const PUBLIC_INSTANCE_METHODS: &[(&str, NativeMethodImpl)] = &[
+        ("getPixel", get_pixel),
+        ("scroll", scroll),
+        ("lock", lock),
+        ("unlock", lock), // sic, it's a noop
+        ("copyPixels", copy_pixels),
+    ];
     write.define_public_builtin_instance_methods(mc, PUBLIC_INSTANCE_METHODS);
 
     class

@@ -2,3 +2,4 @@
 
 pub mod object_encoding;
 pub mod sharedobject;
+pub mod urlloader;

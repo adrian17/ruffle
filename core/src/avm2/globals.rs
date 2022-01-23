@@ -585,6 +585,11 @@ pub fn load_player_globals<'gc>(
     )?;
     class(
         activation,
+        flash::events::ioerrorevent::create_class(mc),
+        script,
+    )?;
+    class(
+        activation,
         flash::events::activityevent::create_class(mc),
         script,
     )?;
@@ -744,6 +749,11 @@ pub fn load_player_globals<'gc>(
         flash::display::capsstyle::create_class(mc),
         script,
     )?;
+    class(
+        activation,
+        flash::display::loader::create_class(mc),
+        script,
+    )?;
     avm2_system_class!(
         loaderinfo,
         activation,
@@ -809,6 +819,11 @@ pub fn load_player_globals<'gc>(
         flash::display::nativemenu::create_class(mc),
         script
     );
+    class(
+        activation,
+        flash::display::nativemenuitem::create_class(mc),
+        script
+    )?;
 
     // package `flash.geom`
     avm2_system_class!(
@@ -857,6 +872,7 @@ pub fn load_player_globals<'gc>(
         flash::ui::contextmenu::create_class(mc),
         script
     );
+    class(activation, flash::ui::contextmenuitem::create_class(mc), script)?;
     class(activation, flash::ui::mouse::create_class(mc), script)?;
 
     // package `flash.net`
@@ -870,6 +886,11 @@ pub fn load_player_globals<'gc>(
     class(
         activation,
         flash::net::object_encoding::create_class(mc),
+        script,
+    )?;
+    class(
+        activation,
+        flash::net::urlloader::create_class(mc),
         script,
     )?;
 

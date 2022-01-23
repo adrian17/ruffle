@@ -6,6 +6,7 @@ use crate::avm2::method::{Method, NativeMethodImpl};
 use crate::avm2::names::{Namespace, QName};
 use crate::avm2::object::Object;
 use crate::avm2::value::Value;
+use crate::avm2::ArrayObject;
 use crate::avm2::Error;
 use gc_arena::{GcCell, MutationContext};
 
@@ -54,6 +55,24 @@ fn is_supported<'gc>(
     Ok(false.into())
 }
 
+fn custom_items<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    _this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    log::warn!("flash.ui.ContextMenu is a stub");
+    Ok(ArrayObject::empty(activation).unwrap().into())
+}
+
+fn set_custom_items<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    _this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    log::warn!("flash.ui.ContextMenu is a stub");
+    Ok(Value::Undefined)
+}
+
 /// Construct `ContextMenu`'s class.
 pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>> {
     let class = Class::new(
@@ -75,6 +94,13 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
     const PUBLIC_INSTANCE_METHODS: &[(&str, NativeMethodImpl)] =
         &[("hideBuiltInItems", hide_built_in_items)];
     write.define_public_builtin_instance_methods(mc, PUBLIC_INSTANCE_METHODS);
+
+    const PUBLIC_INSTANCE_PROPERTIES: &[(
+        &str,
+        Option<NativeMethodImpl>,
+        Option<NativeMethodImpl>,
+    )] = &[("customItems", Some(custom_items), Some(set_custom_items))];
+    write.define_public_builtin_instance_properties(mc, PUBLIC_INSTANCE_PROPERTIES);
 
     class
 }
