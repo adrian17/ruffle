@@ -1301,7 +1301,7 @@ export class RufflePlayer extends HTMLElement {
                 errorBody = `
                     <p>Ruffle has encountered a major issue whilst trying to initialize.</p>
                     <p>This can often resolve itself, so you can try reloading the page.</p>
-                    <p>Otherwise, please contact the website administrator.</p>
+                    <p>Otherwise, please do contact the website administrator.</p>
                 `;
                 errorFooter = `
                     <li><a href="#" id="panic-view-details">View Error Details</a></li>

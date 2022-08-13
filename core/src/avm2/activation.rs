@@ -180,7 +180,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
             Method::Native { .. } => 0,
             Method::Bytecode(bytecode) => {
                 let body: Result<_, Error> = bytecode.body().ok_or_else(|| {
-                    "Cannot execute non-native method (for script) without body".into()
+                    "Cannot execute non-native method without body".into()
                 });
                 body?.num_locals
             }
