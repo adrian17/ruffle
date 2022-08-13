@@ -179,9 +179,9 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
         let num_locals = match method {
             Method::Native { .. } => 0,
             Method::Bytecode(bytecode) => {
-                let body: Result<_, Error> = bytecode.body().ok_or_else(|| {
-                    "Cannot execute non-native method without body".into()
-                });
+                let body: Result<_, Error> = bytecode
+                    .body()
+                    .ok_or_else(|| "Cannot execute non-native method without body".into());
                 body?.num_locals
             }
         };
