@@ -496,6 +496,7 @@ impl<'a> Reader<'a> {
             init_scope_depth,
             max_scope_depth,
             code,
+            parsed_code: vec![],
             exceptions,
             traits,
         })
@@ -751,7 +752,7 @@ impl<'a> Reader<'a> {
                     for _ in 0..num_cases {
                         case_offsets.push(self.read_i24()?);
                     }
-                    case_offsets.into()
+                    Box::new(case_offsets)
                 },
             },
             OpCode::LShift => Op::LShift,

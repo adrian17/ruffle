@@ -129,6 +129,7 @@ pub struct MethodBody {
     pub init_scope_depth: u32,
     pub max_scope_depth: u32,
     pub code: Vec<u8>,
+    pub parsed_code: Vec<Op>,
     pub exceptions: Vec<Exception>,
     pub traits: Vec<Trait>,
 }
@@ -473,7 +474,7 @@ pub enum Op {
     Li8,
     LookupSwitch {
         default_offset: i32,
-        case_offsets: Box<[i32]>,
+        case_offsets: Box<Vec<i32>>,
     },
     LShift,
     Modulo,

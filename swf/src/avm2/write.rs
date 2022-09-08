@@ -590,7 +590,7 @@ impl<W: Write> Writer<W> {
     }
 
     #[allow(dead_code)]
-    fn write_op(&mut self, op: &Op) -> Result<()> {
+    pub fn write_op(&mut self, op: &Op) -> Result<()> {
         match *op {
             Op::Add => self.write_opcode(OpCode::Add)?,
             Op::AddI => self.write_opcode(OpCode::AddI)?,
@@ -915,7 +915,7 @@ impl<W: Write> Writer<W> {
                 self.write_opcode(OpCode::LookupSwitch)?;
                 self.write_i24(default_offset)?;
                 self.write_u30(case_offsets.len() as u32 - 1)?;
-                for offset in case_offsets.iter() {
+                for offset in &**case_offsets {
                     self.write_i24(*offset)?;
                 }
             }

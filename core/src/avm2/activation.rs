@@ -22,12 +22,10 @@ use crate::avm2::QName;
 use crate::avm2::{value, Avm2, Error};
 use crate::context::{GcContext, UpdateContext};
 use crate::string::{AvmAtom, AvmString};
-use crate::swf::extensions::ReadSwfExt;
 use gc_arena::{Gc, GcCell};
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cmp::{min, Ordering};
-use swf::avm2::read::Reader;
 use swf::avm2::types::{
     Class as AbcClass, Exception, Index, Method as AbcMethod, MethodFlags as AbcMethodFlags,
     Multiname as AbcMultiname, Namespace as AbcNamespace, Op,
@@ -75,6 +73,9 @@ enum FrameControl<'gc> {
 
 /// Represents a single activation of a given AVM2 function or keyframe.
 pub struct Activation<'a, 'gc: 'a> {
+    /// The instruction index.
+    ip: i32,
+
     /// The immutable value of `this`.
     #[allow(dead_code)]
     this: Option<Object<'gc>>,
@@ -169,6 +170,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let local_registers = RegisterSet::new(0);
 
         Self {
+            ip: 0,
             this: None,
             arguments: None,
             is_executing: false,
@@ -200,6 +202,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let local_registers = RegisterSet::new(0);
 
         Self {
+            ip: 0,
             this: None,
             arguments: None,
             is_executing: false,
@@ -244,6 +247,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         *local_registers.get_mut(0).unwrap() = global_object.into();
 
         Ok(Self {
+            ip: 0,
             this: Some(global_object),
             arguments: None,
             is_executing: false,
@@ -497,6 +501,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         };
 
         let mut activation = Self {
+            ip: 0,
             this,
             arguments: None,
             is_executing: false,
@@ -585,6 +590,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let local_registers = RegisterSet::new(0);
 
         Ok(Self {
+            ip: 0,
             this,
             arguments: None,
             is_executing: false,
@@ -704,6 +710,10 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     #[inline]
     pub fn borrow_gc(&mut self) -> GcContext<'_, 'gc> {
         self.context.borrow_gc()
+    }
+
+    pub fn this(&self) -> Option<Object<'gc>> {
+        self.this
     }
 
     /// Get the class that defined the currently-executing method, if it
@@ -922,14 +932,24 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         &mut self,
         method: Gc<'gc, BytecodeMethod<'gc>>,
     ) -> Result<Value<'gc>, Error<'gc>> {
-        let body: Result<_, Error<'gc>> = method
-            .body()
-            .ok_or_else(|| "Cannot execute non-native method without body".into());
-        let body = body?;
-        let mut reader = Reader::new(&body.code);
+
+        if method.try_optimize.get() {
+            method.optimize(self, self.subclass_object);
+            method.try_optimize.set(false);
+        }
+
+        let optimized = method.optimized_method_body.borrow();
+        let optimized = optimized.as_ref().unwrap();
+
+        let parsed_code = &optimized.parsed_code;
+
+        if parsed_code.len() == 0 {
+            panic!("empty parsed_code");
+        }
+        self.ip = 0;
 
         let val = loop {
-            let result = self.do_next_opcode(method, &mut reader, &body.code);
+            let result = self.do_next_opcode(method, &parsed_code);
             match result {
                 Ok(FrameControl::Return(value)) => break Ok(value),
                 Ok(FrameControl::Continue) => {}
@@ -947,9 +967,6 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn handle_err<'b>(
         &mut self,
         method: Gc<'gc, BytecodeMethod<'gc>>,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
-        instruction_start: usize,
         error: Error<'gc>,
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let error = match error {
@@ -957,33 +974,35 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             Error::RustError(_) => return Err(error),
         };
 
-        if let Some(body) = method.body() {
-            // Use `coerce_to_object` so that we handle primitives correctly.
-            let err_object = error.coerce_to_object(self);
-            for e in body.exceptions.iter() {
-                if instruction_start >= e.from_offset as usize
-                    && instruction_start < e.to_offset as usize
-                {
-                    let mut matches = false;
-                    // A typeless catch block (e.g. `catch(er) { ... }`) will
-                    // always match.
-                    if e.type_name.0 == 0 {
-                        matches = true;
-                    } else if let Ok(err_object) = err_object {
-                        let type_name = self.pool_multiname_static(method, e.type_name)?;
-                        let ty_class = self.resolve_class(&type_name)?;
+        let optimized = method.optimized_method_body.borrow();
+        let body = optimized.as_ref().unwrap();
 
-                        matches = err_object.is_of_type(ty_class, &mut self.context);
-                    }
+        // Use `coerce_to_object` so that we handle primitives correctly.
+        let err_object = error.coerce_to_object(self);
+        let last_ip = self.ip - 1;
+        for e in body.exceptions.iter() {
+            println!("from {:?} to {:?}, self is {:?}", e.from_offset, e.to_offset, self.ip);
+            if last_ip >= e.from_offset as i32 && last_ip < e.to_offset as i32
+            {
+                let mut matches = false;
+                // A typeless catch block (e.g. `catch(er) { ... }`) will
+                // always match.
+                if e.type_name.0 == 0 {
+                    matches = true;
+                } else if let Ok(err_object) = err_object {
+                    let type_name = self.pool_multiname_static(method, e.type_name)?;
+                    let ty_class = self.resolve_class(&type_name)?;
 
-                    if matches {
-                        self.clear_stack();
-                        self.push_stack(error);
+                    matches = err_object.is_of_type(ty_class, &mut self.context);
+                }
 
-                        self.clear_scope();
-                        reader.seek_absolute(full_data, e.target_offset as usize);
-                        return Ok(FrameControl::Continue);
-                    }
+                if matches {
+                    self.clear_stack();
+                    self.push_stack(error);
+
+                    self.clear_scope();
+                    self.ip = e.target_offset as i32;
+                    return Ok(FrameControl::Continue);
                 }
             }
         }
@@ -995,8 +1014,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn do_next_opcode<'b>(
         &mut self,
         method: Gc<'gc, BytecodeMethod<'gc>>,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
+        opcodes: &[Op],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         self.actions_since_timeout_check += 1;
         if self.actions_since_timeout_check >= 2000 {
@@ -1009,81 +1027,81 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             }
         }
 
-        let instruction_start = reader.pos(full_data);
-        let op = reader.read_op();
-        if let Ok(op) = op {
-            avm_debug!(self.avm2(), "Opcode: {op:?}");
+        let op = &opcodes[self.ip as usize];
+        self.ip += 1;
+        avm_debug!(self.avm2(), "Opcode: {op:?}");
 
+        {
             let result = match op {
-                Op::PushByte { value } => self.op_push_byte(value),
-                Op::PushDouble { value } => self.op_push_double(method, value),
+                Op::PushByte { value } => self.op_push_byte(*value),
+                Op::PushDouble { value } => self.op_push_double(method, *value),
                 Op::PushFalse => self.op_push_false(),
-                Op::PushInt { value } => self.op_push_int(method, value),
-                Op::PushNamespace { value } => self.op_push_namespace(method, value),
+                Op::PushInt { value } => self.op_push_int(method, *value),
+                Op::PushNamespace { value } => self.op_push_namespace(method, *value),
                 Op::PushNaN => self.op_push_nan(),
                 Op::PushNull => self.op_push_null(),
-                Op::PushShort { value } => self.op_push_short(value),
-                Op::PushString { value } => self.op_push_string(method, value),
+                Op::PushShort { value } => self.op_push_short(*value),
+                Op::PushString { value } => self.op_push_string(method, *value),
                 Op::PushTrue => self.op_push_true(),
-                Op::PushUint { value } => self.op_push_uint(method, value),
+                Op::PushUint { value } => self.op_push_uint(method, *value),
                 Op::PushUndefined => self.op_push_undefined(),
                 Op::Pop => self.op_pop(),
                 Op::Dup => self.op_dup(),
-                Op::GetLocal { index } => self.op_get_local(index),
-                Op::SetLocal { index } => self.op_set_local(index),
-                Op::Kill { index } => self.op_kill(index),
-                Op::Call { num_args } => self.op_call(num_args),
-                Op::CallMethod { index, num_args } => self.op_call_method(index, num_args),
+                Op::GetLocal { index } => self.op_get_local(*index),
+                Op::SetLocal { index } => self.op_set_local(*index),
+                Op::Kill { index } => self.op_kill(*index),
+                Op::Call { num_args } => self.op_call(*num_args),
+                Op::CallMethod { index, num_args } => self.op_call_method(*index, *num_args),
                 Op::CallProperty { index, num_args } => {
-                    self.op_call_property(method, index, num_args)
+                    self.op_call_property(method, *index, *num_args)
                 }
                 Op::CallPropLex { index, num_args } => {
-                    self.op_call_prop_lex(method, index, num_args)
+                    self.op_call_prop_lex(method, *index, *num_args)
                 }
                 Op::CallPropVoid { index, num_args } => {
-                    self.op_call_prop_void(method, index, num_args)
+                    self.op_call_prop_void(method, *index, *num_args)
                 }
-                Op::CallStatic { index, num_args } => self.op_call_static(method, index, num_args),
-                Op::CallSuper { index, num_args } => self.op_call_super(method, index, num_args),
+                Op::CallStatic { index, num_args } => self.op_call_static(method, *index, *num_args),
+                Op::CallSuper { index, num_args } => self.op_call_super(method, *index, *num_args),
                 Op::CallSuperVoid { index, num_args } => {
-                    self.op_call_super_void(method, index, num_args)
+                    self.op_call_super_void(method, *index, *num_args)
                 }
                 Op::ReturnValue => self.op_return_value(method),
                 Op::ReturnVoid => self.op_return_void(),
-                Op::GetProperty { index } => self.op_get_property(method, index),
-                Op::SetProperty { index } => self.op_set_property(method, index),
-                Op::InitProperty { index } => self.op_init_property(method, index),
-                Op::DeleteProperty { index } => self.op_delete_property(method, index),
-                Op::GetSuper { index } => self.op_get_super(method, index),
-                Op::SetSuper { index } => self.op_set_super(method, index),
+                Op::GetProperty { index } => self.op_get_property(method, *index),
+                Op::SetProperty { index } => self.op_set_property(method, *index),
+                Op::InitProperty { index } => self.op_init_property(method, *index),
+                Op::DeleteProperty { index } => self.op_delete_property(method, *index),
+                Op::GetSuper { index } => self.op_get_super(method, *index),
+                Op::SetSuper { index } => self.op_set_super(method, *index),
                 Op::In => self.op_in(),
                 Op::PushScope => self.op_push_scope(),
-                Op::NewCatch { index } => self.op_newcatch(method, index),
+                Op::NewCatch { index } => self.op_newcatch(method, *index),
                 Op::PushWith => self.op_push_with(),
                 Op::PopScope => self.op_pop_scope(),
-                Op::GetOuterScope { index } => self.op_get_outer_scope(index),
-                Op::GetScopeObject { index } => self.op_get_scope_object(index),
+                Op::GetOuterScope { index } => self.op_get_outer_scope(*index),
+                Op::GetScopeObject { index } => self.op_get_scope_object(*index),
                 Op::GetGlobalScope => self.op_get_global_scope(),
-                Op::FindDef { index } => self.op_find_def(method, index),
-                Op::FindProperty { index } => self.op_find_property(method, index),
-                Op::FindPropStrict { index } => self.op_find_prop_strict(method, index),
-                Op::GetLex { index } => self.op_get_lex(method, index),
-                Op::GetDescendants { index } => self.op_get_descendants(method, index),
-                Op::GetSlot { index } => self.op_get_slot(index),
-                Op::SetSlot { index } => self.op_set_slot(index),
-                Op::GetGlobalSlot { index } => self.op_get_global_slot(index),
-                Op::SetGlobalSlot { index } => self.op_set_global_slot(index),
-                Op::Construct { num_args } => self.op_construct(num_args),
+                Op::FindDef { index } => self.op_find_def(method, *index),
+                Op::FindProperty { index } => self.op_find_property(method, *index),
+                Op::FindPropStrict { index } => self.op_find_prop_strict(method, *index),
+                Op::GetLex { index } => self.op_get_lex(method, *index),
+                Op::GetDescendants { index } => self.op_get_descendants(method, *index),
+                Op::GetSlot { index } => self.op_get_slot(*index),
+                Op::SetSlot { index } => self.op_set_slot(*index),
+                Op::GetGlobalSlot { index } => self.op_get_global_slot(*index),
+                Op::SetGlobalSlot { index } => self.op_set_global_slot(*index),
+                Op::Construct { num_args } => self.op_construct(*num_args),
                 Op::ConstructProp { index, num_args } => {
-                    self.op_construct_prop(method, index, num_args)
+                    self.op_construct_prop(method, *index, *num_args)
                 }
-                Op::ConstructSuper { num_args } => self.op_construct_super(num_args),
+                Op::ConstructSuper { num_args } => self.op_construct_super(*num_args),
                 Op::NewActivation => self.op_new_activation(),
-                Op::NewObject { num_args } => self.op_new_object(num_args),
-                Op::NewFunction { index } => self.op_new_function(method, index),
-                Op::NewClass { index } => self.op_new_class(method, index),
-                Op::ApplyType { num_types } => self.op_apply_type(num_types),
-                Op::NewArray { num_args } => self.op_new_array(num_args),
+                Op::NewObject { num_args } => self.op_new_object(*num_args),
+                Op::NewFunction { index } => self.op_new_function(method, *index),
+                Op::NewClass { index } => self.op_new_class(method, *index),
+                Op::ApplyType { num_types } => self.op_apply_type(*num_types),
+                Op::NewArray { num_args } => self.op_new_array(*num_args),
                 Op::CoerceA => self.op_coerce_a(),
                 Op::CoerceB => self.op_coerce_b(),
                 Op::CoerceD => self.op_coerce_d(),
@@ -1103,13 +1121,13 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::BitNot => self.op_bitnot(),
                 Op::BitOr => self.op_bitor(),
                 Op::BitXor => self.op_bitxor(),
-                Op::DecLocal { index } => self.op_declocal(index),
-                Op::DecLocalI { index } => self.op_declocal_i(index),
+                Op::DecLocal { index } => self.op_declocal(*index),
+                Op::DecLocalI { index } => self.op_declocal_i(*index),
                 Op::Decrement => self.op_decrement(),
                 Op::DecrementI => self.op_decrement_i(),
                 Op::Divide => self.op_divide(),
-                Op::IncLocal { index } => self.op_inclocal(index),
-                Op::IncLocalI { index } => self.op_inclocal_i(index),
+                Op::IncLocal { index } => self.op_inclocal(*index),
+                Op::IncLocalI { index } => self.op_inclocal_i(*index),
                 Op::Increment => self.op_increment(),
                 Op::IncrementI => self.op_increment_i(),
                 Op::LShift => self.op_lshift(),
@@ -1123,21 +1141,21 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::SubtractI => self.op_subtract_i(),
                 Op::Swap => self.op_swap(),
                 Op::URShift => self.op_urshift(),
-                Op::Jump { offset } => self.op_jump(offset, reader, full_data),
-                Op::IfTrue { offset } => self.op_if_true(offset, reader, full_data),
-                Op::IfFalse { offset } => self.op_if_false(offset, reader, full_data),
-                Op::IfStrictEq { offset } => self.op_if_strict_eq(offset, reader, full_data),
-                Op::IfStrictNe { offset } => self.op_if_strict_ne(offset, reader, full_data),
-                Op::IfEq { offset } => self.op_if_eq(offset, reader, full_data),
-                Op::IfNe { offset } => self.op_if_ne(offset, reader, full_data),
-                Op::IfGe { offset } => self.op_if_ge(offset, reader, full_data),
-                Op::IfGt { offset } => self.op_if_gt(offset, reader, full_data),
-                Op::IfLe { offset } => self.op_if_le(offset, reader, full_data),
-                Op::IfLt { offset } => self.op_if_lt(offset, reader, full_data),
-                Op::IfNge { offset } => self.op_if_nge(offset, reader, full_data),
-                Op::IfNgt { offset } => self.op_if_ngt(offset, reader, full_data),
-                Op::IfNle { offset } => self.op_if_nle(offset, reader, full_data),
-                Op::IfNlt { offset } => self.op_if_nlt(offset, reader, full_data),
+                Op::Jump { offset } => self.op_jump(*offset),
+                Op::IfTrue { offset } => self.op_if_true(*offset),
+                Op::IfFalse { offset } => self.op_if_false(*offset),
+                Op::IfStrictEq { offset } => self.op_if_strict_eq(*offset),
+                Op::IfStrictNe { offset } => self.op_if_strict_ne(*offset),
+                Op::IfEq { offset } => self.op_if_eq(*offset),
+                Op::IfNe { offset } => self.op_if_ne(*offset),
+                Op::IfGe { offset } => self.op_if_ge(*offset),
+                Op::IfGt { offset } => self.op_if_gt(*offset),
+                Op::IfLe { offset } => self.op_if_le(*offset),
+                Op::IfLt { offset } => self.op_if_lt(*offset),
+                Op::IfNge { offset } => self.op_if_nge(*offset),
+                Op::IfNgt { offset } => self.op_if_ngt(*offset),
+                Op::IfNle { offset } => self.op_if_nle(*offset),
+                Op::IfNlt { offset } => self.op_if_nlt(*offset),
                 Op::StrictEquals => self.op_strict_equals(),
                 Op::Equals => self.op_equals(),
                 Op::GreaterEquals => self.op_greater_equals(),
@@ -1150,12 +1168,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::HasNext2 {
                     object_register,
                     index_register,
-                } => self.op_has_next_2(object_register, index_register),
+                } => self.op_has_next_2(*object_register, *index_register),
                 Op::NextName => self.op_next_name(),
                 Op::NextValue => self.op_next_value(),
-                Op::IsType { index } => self.op_is_type(method, index),
+                Op::IsType { index } => self.op_is_type(method, *index),
                 Op::IsTypeLate => self.op_is_type_late(),
-                Op::AsType { type_name } => self.op_as_type(method, type_name),
+                Op::AsType { type_name } => self.op_as_type(method, *type_name),
                 Op::AsTypeLate => self.op_as_type_late(),
                 Op::InstanceOf => self.op_instance_of(),
                 Op::Label => Ok(FrameControl::Continue),
@@ -1163,11 +1181,11 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                     is_local_register,
                     register_name,
                     register,
-                } => self.op_debug(method, is_local_register, register_name, register),
-                Op::DebugFile { file_name } => self.op_debug_file(method, file_name),
-                Op::DebugLine { line_num } => self.op_debug_line(line_num),
+                } => self.op_debug(method, *is_local_register, *register_name, *register),
+                Op::DebugFile { file_name } => self.op_debug_file(method, *file_name),
+                Op::DebugLine { line_num } => self.op_debug_line(*line_num),
                 Op::Bkpt => self.op_bkpt(),
-                Op::BkptLine { line_num } => self.op_bkpt_line(line_num),
+                Op::BkptLine { line_num } => self.op_bkpt_line(*line_num),
                 Op::Timestamp => self.op_timestamp(),
                 Op::TypeOf => self.op_type_of(),
                 Op::EscXAttr => self.op_esc_xattr(),
@@ -1175,14 +1193,8 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::LookupSwitch {
                     default_offset,
                     case_offsets,
-                } => self.op_lookup_switch(
-                    default_offset,
-                    &case_offsets,
-                    instruction_start,
-                    reader,
-                    full_data,
-                ),
-                Op::Coerce { index } => self.op_coerce(method, index),
+                } => self.op_lookup_switch(*default_offset, case_offsets),
+                Op::Coerce { index } => self.op_coerce(method, *index),
                 Op::CheckFilter => self.op_check_filter(),
                 Op::Si8 => self.op_si8(),
                 Op::Si16 => self.op_si16(),
@@ -1202,18 +1214,14 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             };
 
             if let Err(error) = result {
-                return self.handle_err(method, reader, full_data, instruction_start, error);
+                return self.handle_err(method, error);
             }
+
             result
-        } else if let Err(e) = op {
-            tracing::error!("Parse error: {:?}", e);
-            Err(Error::RustError(Box::new(e)))
-        } else {
-            unreachable!();
         }
     }
 
-    fn unknown_op(&mut self, op: swf::avm2::types::Op) -> Result<FrameControl<'gc>, Error<'gc>> {
+    fn unknown_op(&mut self, op: &swf::avm2::types::Op) -> Result<FrameControl<'gc>, Error<'gc>> {
         tracing::error!("Unknown AVM2 opcode: {:?}", op);
         Err("Unknown op".into())
     }
@@ -1360,24 +1368,26 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         arg_count: u32,
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         // The entire implementation of VTable assumes that
-        // call_method is never encountered. (see the long comment there)
+        // call_method is never encountered in SWF. (see the long comment there)
         // This was also the conlusion from analysing avmplus behavior - they
         // unconditionally VerifyError upon noticing it.
         // If we ever reach here, let's immediately panic instead of erroring,
         // so we get an issue report ASAP.
-        panic!("Call_method is not supported");
 
-        #[allow(unreachable_code)]
-        {
+        // TODO: do this in verifier, it's valid for optimizer to gen this
+
+        //panic!("Call_method is not supported");
+        //#[allow(unreachable_code)]
+        //{
             let args = self.pop_stack_args(arg_count);
-            let receiver = self.pop_stack().as_callable(self, None, None)?;
+            let receiver = self.pop_stack().coerce_to_object_or_typeerror(self, None)?;
 
             let value = receiver.call_method(index.0, &args, self)?;
 
             self.push_stack(value);
 
             Ok(FrameControl::Continue)
-        }
+        //}
     }
 
     fn op_call_property(
@@ -2464,10 +2474,8 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_jump<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
-        reader.seek(full_data, offset);
+        self.ip += offset;
 
         Ok(FrameControl::Continue)
     }
@@ -2475,13 +2483,11 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_true<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value = self.pop_stack().coerce_to_boolean();
 
         if value {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2490,13 +2496,11 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_false<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value = self.pop_stack().coerce_to_boolean();
 
         if !value {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2505,14 +2509,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_strict_eq<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value1 == value2 {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2521,14 +2523,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_strict_ne<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value1 != value2 {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2537,14 +2537,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_eq<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value1.abstract_eq(&value2, self)? {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2553,14 +2551,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_ne<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if !value1.abstract_eq(&value2, self)? {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2569,14 +2565,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_ge<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value1.abstract_lt(&value2, self)? == Some(false) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2585,14 +2579,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_gt<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value2.abstract_lt(&value1, self)? == Some(true) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2601,14 +2593,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_le<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value2.abstract_lt(&value1, self)? == Some(false) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2617,14 +2607,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_lt<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value1.abstract_lt(&value2, self)? == Some(true) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2633,14 +2621,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_nge<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value1.abstract_lt(&value2, self)?.unwrap_or(true) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2649,14 +2635,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_ngt<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if !value2.abstract_lt(&value1, self)?.unwrap_or(false) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2665,14 +2649,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_nle<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if value2.abstract_lt(&value1, self)?.unwrap_or(true) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2681,14 +2663,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     fn op_if_nlt<'b>(
         &mut self,
         offset: i32,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         if !value1.abstract_lt(&value2, self)?.unwrap_or(false) {
-            reader.seek(full_data, offset);
+            self.ip += offset;
         }
 
         Ok(FrameControl::Continue)
@@ -2999,20 +2979,15 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         &mut self,
         default_offset: i32,
         case_offsets: &[i32],
-        instruction_start: usize,
-        reader: &mut Reader<'b>,
-        full_data: &'b [u8],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
         let index = self.pop_stack().coerce_to_i32(self)?;
 
         let offset = case_offsets
             .get(index as usize)
             .copied()
-            .unwrap_or(default_offset)
-            + instruction_start as i32
-            - reader.pos(full_data) as i32;
+            .unwrap_or(default_offset);
 
-        reader.seek(full_data, offset);
+        self.ip += offset;
         Ok(FrameControl::Continue)
     }
 
