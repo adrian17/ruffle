@@ -237,6 +237,21 @@ pub fn set_border_color<'gc>(
     Ok(Value::Undefined)
 }
 
+pub fn bottom_scroll_v<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        return Ok(this.bottom_scroll().into());
+    }
+
+    Ok(Value::Undefined)
+}
+
 pub fn default_text_format<'gc>(
     activation: &mut Activation<'_, 'gc, '_>,
     this: Option<Object<'gc>>,
@@ -345,6 +360,34 @@ pub fn set_embed_fonts<'gc>(
     Ok(Value::Undefined)
 }
 
+pub fn grid_fit_type<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    _this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    Ok("pixel".into())
+}
+
+pub fn set_grid_fit_type<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(_this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        let grid_fit_type = args
+            .get(0)
+            .unwrap_or(&Value::Undefined)
+            .coerce_to_string(activation)?;
+        if &grid_fit_type != b"pixel" {
+            log::warn!("TextField.gridFitType setter: not yet implemented");
+        }
+    }
+    Ok(Value::Undefined)
+}
+
 pub fn html_text<'gc>(
     activation: &mut Activation<'_, 'gc, '_>,
     this: Option<Object<'gc>>,
@@ -396,6 +439,36 @@ pub fn length<'gc>(
     Ok(Value::Undefined)
 }
 
+pub fn max_scroll_h<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        return Ok(this.maxhscroll().into());
+    }
+
+    Ok(Value::Undefined)
+}
+
+pub fn max_scroll_v<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        return Ok(this.maxscroll().into());
+    }
+
+    Ok(Value::Undefined)
+}
+
 pub fn multiline<'gc>(
     _activation: &mut Activation<'_, 'gc, '_>,
     this: Option<Object<'gc>>,
@@ -427,6 +500,80 @@ pub fn set_multiline<'gc>(
             .coerce_to_boolean();
 
         this.set_multiline(is_multiline, &mut activation.context);
+    }
+
+    Ok(Value::Undefined)
+}
+
+pub fn scroll_h<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        return Ok(this.hscroll().into());
+    }
+
+    Ok(Value::Undefined)
+}
+
+pub fn set_scroll_h<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        // TODO: clamping logic?
+        let scroll_h = args
+            .get(0)
+            .cloned()
+            .unwrap_or(Value::Undefined)
+            .coerce_to_number(activation)?;
+
+        this.set_hscroll(scroll_h, &mut activation.context);
+    }
+
+    Ok(Value::Undefined)
+}
+
+pub fn scroll_v<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        return Ok(this.scroll().into());
+    }
+
+    Ok(Value::Undefined)
+}
+
+pub fn set_scroll_v<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    if let Some(this) = this
+        .and_then(|this| this.as_display_object())
+        .and_then(|this| this.as_edit_text())
+    {
+        // TODO: clamping logic?
+        let scroll_v = args
+            .get(0)
+            .cloned()
+            .unwrap_or(Value::Undefined)
+            .coerce_to_number(activation)?;
+
+        this.set_scroll(scroll_v, &mut activation.context);
     }
 
     Ok(Value::Undefined)
@@ -465,6 +612,23 @@ pub fn set_selectable<'gc>(
         this.set_selectable(is_selectable, &mut activation.context);
     }
 
+    Ok(Value::Undefined)
+}
+
+pub fn sharpness<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    _this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    Ok(0.into())
+}
+
+pub fn set_sharpness<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    _this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    log::warn!("TextField.sharpness setter: not yet implemented");
     Ok(Value::Undefined)
 }
 
@@ -925,6 +1089,7 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
         ),
         ("border", Some(border), Some(set_border)),
         ("borderColor", Some(border_color), Some(set_border_color)),
+        ("bottomScrollV", Some(bottom_scroll_v), None),
         (
             "defaultTextFormat",
             Some(default_text_format),
@@ -936,10 +1101,16 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
             Some(set_display_as_password),
         ),
         ("embedFonts", Some(embed_fonts), Some(set_embed_fonts)),
+        ("gridFitType", Some(grid_fit_type), Some(set_grid_fit_type)),
         ("htmlText", Some(html_text), Some(set_html_text)),
         ("length", Some(length), None),
+        ("maxScrollH", Some(max_scroll_h), None),
+        ("maxScrollV", Some(max_scroll_v), None),
         ("multiline", Some(multiline), Some(set_multiline)),
+        ("scrollH", Some(scroll_h), Some(set_scroll_h)),
+        ("scrollV", Some(scroll_v), Some(set_scroll_v)),
         ("selectable", Some(selectable), Some(set_selectable)),
+        ("sharpness", Some(sharpness), Some(set_sharpness)),
         ("text", Some(text), Some(set_text)),
         ("textColor", Some(text_color), Some(set_text_color)),
         ("textHeight", Some(text_height), None),

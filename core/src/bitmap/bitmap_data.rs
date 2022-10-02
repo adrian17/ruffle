@@ -1039,7 +1039,7 @@ impl<'gc> BitmapData<'gc> {
         match image {
             Ok(image) => copy_pixels_to_bitmapdata(self, image.data()),
             Err(ruffle_render::error::Error::Unimplemented) => {
-                log::warn!("BitmapData.draw: Not yet implemented")
+                //log::warn!("BitmapData.draw: Not yet implemented")
             }
             Err(e) => panic!("BitmapData.draw failed: {:?}", e),
         }

@@ -331,6 +331,15 @@ pub fn copy_pixels<'gc>(
     Ok(Value::Undefined)
 }
 
+pub fn color_transform<'gc>(
+    _activation: &mut Activation<'_, 'gc, '_>,
+    _this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+    //log::warn!("BitmpData::colorTransform is a stub");
+    Ok(Value::Undefined)
+}
+
 /// Implements `BitmapData.getPixel`.
 pub fn get_pixel<'gc>(
     activation: &mut Activation<'_, 'gc, '_>,
@@ -575,6 +584,7 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
     write.define_public_builtin_instance_properties(mc, PUBLIC_INSTANCE_PROPERTIES);
 
     const PUBLIC_INSTANCE_METHODS: &[(&str, NativeMethodImpl)] = &[
+        ("colorTransform", color_transform),
         ("getPixel", get_pixel),
         ("getPixel32", get_pixel32),
         ("scroll", scroll),
