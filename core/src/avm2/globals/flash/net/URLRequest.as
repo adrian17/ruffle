@@ -5,6 +5,8 @@ package flash.net {
 
 		// FIXME - this should be a getter/setter for consistency with Flash
 		public var url:String;
+		public var contentType: String; // ignored
+
 		public var digest:String;
 		private var _method:String = URLRequestMethod.GET;
 		private var _data:Object;
@@ -28,7 +30,7 @@ package flash.net {
 
 		public function set data(newData:Object):void {
 			if (newData !== null) {
-				throw new Error("URLRequest.data setter is not yet implemented!");
+				trace("URLRequest.data setter is not yet implemented!");
 			}
 			this._data = newData;
 		}

@@ -10,6 +10,8 @@ use crate::avm2::{Error, Object};
 use crate::backend::navigator::Request;
 use crate::display_object::LoaderDisplay;
 use crate::display_object::MovieClip;
+use crate::display_object::TDisplayObject;
+use crate::display_object::TDisplayObjectContainer;
 use crate::loader::MovieLoaderEventHandler;
 use crate::tag_utils::SwfMovie;
 use std::sync::Arc;
@@ -132,5 +134,43 @@ pub fn load_bytes<'gc>(
         );
         activation.context.navigator.spawn_future(future);
     }
+    Ok(Value::Undefined)
+}
+
+pub fn unload<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error<'gc>> {
+
+    if let Some(mut this) = this {
+        if let Some(mut container) = this
+            .as_display_object()
+            .and_then(|dobj| dobj.as_container())
+        {
+            if let Some(child) = container.child_by_index(0) {
+                child.unload(&mut activation.context);
+                if let Some(mut mc) = child.as_movie_clip() {
+                    mc.replace_with_movie(&mut activation.context, None, None);
+                }
+                container.remove_child(&mut activation.context, child);
+            }
+
+            // TODO: dedupe this
+            let loader_info = LoaderInfoObject::not_yet_loaded(
+                activation,
+                Arc::new(SwfMovie::empty(activation.context.swf.version())),
+                Some(this),
+                None,
+                false,
+            )?;
+            this.set_property(
+                &Multiname::new(Namespace::private(""), "_contentLoaderInfo"),
+                loader_info.into(),
+                activation,
+            )?;
+        }
+    }
+
     Ok(Value::Undefined)
 }
