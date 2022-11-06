@@ -30,6 +30,8 @@ package flash.display {
 
 		public native function loadBytes(data: ByteArray, context: LoaderContext = null):void;
 
+		public native function unload():void;
+
 		override public function addChild(child:DisplayObject):DisplayObject {
 			throw new IllegalOperationError("Error #2069: The Loader class does not implement this method.", 2069);
 		}
