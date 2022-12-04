@@ -293,6 +293,7 @@ pub fn url<'gc>(
     this: Option<Object<'gc>>,
     _args: &[Value<'gc>],
 ) -> Result<Value<'gc>, Error<'gc>> {
+    return Ok(AvmString::new_utf8(activation.context.gc_context, "http://www.google.com").into());
     if let Some(this) = this {
         if let Some(loader_stream) = this
             .as_loader_info_object()
