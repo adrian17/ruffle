@@ -302,6 +302,10 @@ impl<'gc> BitmapData<'gc> {
         x >= 0 && x < self.width() as i32 && y >= 0 && y < self.height() as i32
     }
 
+    pub unsafe fn get_pixel_raw_unchecked(&self, x: u32, y: u32) -> Color {
+        *self.pixels.get_unchecked((x + y * self.width()) as usize)
+    }
+
     pub fn get_pixel_raw(&self, x: u32, y: u32) -> Option<Color> {
         if x >= self.width() || y >= self.height() {
             return None;
@@ -327,6 +331,12 @@ impl<'gc> BitmapData<'gc> {
     pub fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
         let current_alpha = self.get_pixel_raw(x, y).map(|p| p.alpha()).unwrap_or(0);
         self.set_pixel32(x as i32, y as i32, color.with_alpha(current_alpha));
+    }
+
+    // NOTE: this does NOT set `dirty`. You need to set it yourself when you're done.
+    pub unsafe fn set_pixel32_raw_unchecked(&mut self, x: u32, y: u32, color: Color) {
+        let width = self.width();
+        *self.pixels.get_unchecked_mut((x + y * width) as usize) = color;
     }
 
     pub fn set_pixel32_raw(&mut self, x: u32, y: u32, color: Color) {
@@ -571,37 +581,121 @@ impl<'gc> BitmapData<'gc> {
         let (src_min_x, src_min_y, src_width, src_height) = src_rect;
         let (dest_min_x, dest_min_y) = dest_point;
 
-        for src_y in src_min_y..(src_min_y + src_height) {
-            for src_x in src_min_x..(src_min_x + src_width) {
-                let dest_x = src_x - src_min_x + dest_min_x;
-                let dest_y = src_y - src_min_y + dest_min_y;
+        // clipping the copied rect in absolute coordinates. This is x,y,x2,y2 not x,y,w,h.
+        let mut abs_rect = (0, 0, src_width, src_height);
 
-                if !source_bitmap.is_point_in_bounds(src_x, src_y)
-                    || !self.is_point_in_bounds(dest_x, dest_y)
-                {
-                    continue;
+        fn clip<'gc>(abs_rect: &mut (i32, i32, i32, i32), bitmap: &BitmapData<'gc>, point: (i32, i32)) {
+            abs_rect.0 = abs_rect.0.max(-point.0);
+            abs_rect.1 = abs_rect.1.max(-point.1);
+            //
+            abs_rect.2 = abs_rect.2.min(-point.0 + bitmap.width() as i32).max(abs_rect.0);
+            abs_rect.3 = abs_rect.3.min(-point.1 + bitmap.height() as i32).max(abs_rect.1);
+        }
+
+        clip(&mut abs_rect, &self, dest_point);
+        clip(&mut abs_rect, &source_bitmap, (src_min_x, src_min_y));
+        if let Some((alpha_bitmap, (alpha_min_x, alpha_min_y))) = alpha_source {
+            clip(&mut abs_rect, &alpha_bitmap, (alpha_min_x, alpha_min_y));
+        }
+
+        let clipped_x = abs_rect.0;
+        let clipped_y = abs_rect.1;
+        let clipped_width = abs_rect.2 - abs_rect.0;
+        let clipped_height = abs_rect.3 - abs_rect.1;
+
+        if clipped_width == 0 || clipped_height == 0 {
+            // nothing to do
+            return;
+        }
+
+        if self.pixels.len() != self.width() as usize * self.height() as usize
+            || source_bitmap.pixels.len() != source_bitmap.width() as usize * source_bitmap.height() as usize
+        {
+            panic!("Bitmap size invariant broken!");
+        }
+
+        let mut inbounds = true;
+        if !self.is_point_in_bounds(dest_min_x + clipped_x + clipped_width - 1, dest_min_y + clipped_y + clipped_height - 1) {
+            inbounds = false;
+        }
+        if !source_bitmap.is_point_in_bounds(src_min_x + clipped_x + clipped_width - 1, src_min_y + clipped_y + clipped_height - 1) {
+            inbounds = false;
+        }
+        if let Some((alpha_bitmap, (alpha_min_x, alpha_min_y))) = alpha_source {
+            if alpha_bitmap.pixels.len() != alpha_bitmap.width() as usize * alpha_bitmap.height() as usize {
+                panic!("Bitmap size invariant broken!");
+            }
+            if !alpha_bitmap.is_point_in_bounds(alpha_min_x + clipped_x + clipped_width - 1, alpha_min_y + clipped_y + clipped_height - 1) {
+                inbounds = false;
+            }
+        }
+        if !inbounds {
+            log::error!("{:?} {:?} sz {:?} {:?} (alpha {:?}) -> {:?}",
+                src_rect,
+                dest_point,
+                (source_bitmap.width(), source_bitmap.height()),
+                (self.width(), self.height()),
+                alpha_source.is_some(),
+                (clipped_x, clipped_y, clipped_width, clipped_height),
+            );
+            panic!("Clipping the copyPixels rect somehow went out of bounds!");
+        }
+
+        if alpha_source.is_none() && !merge_alpha && self.transparency == source_bitmap.transparency {
+            for y in clipped_y..clipped_y+clipped_height {
+                let dest_y = dest_min_y + y;
+                let src_y = src_min_y + y;
+                for x in clipped_x..clipped_x+clipped_width {
+                    let dest_x = dest_min_x + x;
+                    let src_x = src_min_x + x;
+                    unsafe {
+                        let source_color = source_bitmap.get_pixel_raw_unchecked(src_x as u32, src_y as u32);
+                        self.set_pixel32_raw_unchecked(dest_x as u32, dest_y as u32, source_color);
+                    }
                 }
+            }
 
-                let source_color = source_bitmap
-                    .get_pixel_raw(src_x as u32, src_y as u32)
-                    .unwrap();
+            self.dirty = true;
+            return;
+        }
 
-                let mut dest_color = self.get_pixel_raw(dest_x as u32, dest_y as u32).unwrap();
+        if alpha_source.is_none() && merge_alpha && self.transparency && source_bitmap.transparency {
+            for y in clipped_y..clipped_y+clipped_height {
+                let dest_y = dest_min_y + y;
+                let src_y = src_min_y + y;
+                for x in clipped_x..clipped_x+clipped_width {
+                    let dest_x = dest_min_x + x;
+                    let src_x = src_min_x + x;
+                    unsafe {
+                        let source_color = source_bitmap.get_pixel_raw_unchecked(src_x as u32, src_y as u32);
+                        let dest_color = self.get_pixel_raw_unchecked(dest_x as u32, dest_y as u32);
+                        let new_color = dest_color.blend_over(&source_color);
+                        self.set_pixel32_raw_unchecked(dest_x as u32, dest_y as u32, new_color);
+                    }
+                }
+            }
+
+            self.dirty = true;
+            return;
+        }
+
+        for y in clipped_y..clipped_y+clipped_height {
+            let dest_y = dest_min_y + y;
+            let src_y = src_min_y + y;
+            for x in clipped_x..clipped_x+clipped_width {
+                let dest_x = dest_min_x + x;
+                let src_x = src_min_x + x;
+
+                let source_color = unsafe { source_bitmap.get_pixel_raw_unchecked(src_x as u32, src_y as u32) };
+                let mut dest_color = unsafe { self.get_pixel_raw_unchecked(dest_x as u32, dest_y as u32) };
 
                 if let Some((alpha_bitmap, (alpha_min_x, alpha_min_y))) = alpha_source {
-                    let alpha_x = src_x - src_min_x + alpha_min_x;
-                    let alpha_y = src_y - src_min_y + alpha_min_y;
-
-                    if alpha_bitmap.transparency
-                        && !alpha_bitmap.is_point_in_bounds(alpha_x, alpha_y)
-                    {
-                        continue;
-                    }
+                    let alpha_x = alpha_min_x + x;
+                    let alpha_y = alpha_min_y + y;
 
                     let final_alpha = if alpha_bitmap.transparency {
-                        let a = alpha_bitmap
-                            .get_pixel_raw(alpha_x as u32, alpha_y as u32)
-                            .unwrap()
+                        let a = unsafe { alpha_bitmap
+                            .get_pixel_raw_unchecked(alpha_x as u32, alpha_y as u32) }
                             .alpha();
 
                         if source_bitmap.transparency {
@@ -645,9 +739,12 @@ impl<'gc> BitmapData<'gc> {
                     }
                 }
 
-                self.set_pixel32_raw(dest_x as u32, dest_y as u32, dest_color);
+                unsafe {
+                    self.set_pixel32_raw_unchecked(dest_x as u32, dest_y as u32, dest_color);
+                }
             }
         }
+        self.dirty = true;
     }
 
     pub fn merge(
