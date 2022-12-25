@@ -1,14 +1,15 @@
 //! AVM2 methods
 
 use crate::avm2::activation::Activation;
-use crate::avm2::object::Object;
+use crate::avm2::object::{Object, ClassObject};
 use crate::avm2::script::TranslationUnit;
 use crate::avm2::value::{abc_default_value, Value};
 use crate::avm2::Error;
 use crate::avm2::Multiname;
 use crate::string::AvmString;
-use gc_arena::{Collect, CollectionContext, Gc, MutationContext};
+use gc_arena::{Collect, CollectionContext, Gc, GcCell, MutationContext};
 use std::fmt;
+use std::cell::Cell;
 use std::ops::Deref;
 use std::rc::Rc;
 use swf::avm2::types::{
@@ -49,6 +50,21 @@ pub struct ParamConfig<'gc> {
     /// The default value for this parameter.
     pub default_value: Option<Value<'gc>>,
 }
+
+/// Configuration of a single parameter of a method.
+#[derive(Clone, Collect, Debug)]
+#[collect(no_drop)]
+pub struct ResolvedParamConfig<'gc> {
+    /// The name of the parameter.
+    pub param_name: AvmString<'gc>,
+
+    /// The the type of the parameter.
+    pub param_type: Option<ClassObject<'gc>>,
+
+    /// The default value for this parameter.
+    pub default_value: Option<Value<'gc>>,
+}
+
 
 impl<'gc> ParamConfig<'gc> {
     fn from_abc_param(
@@ -120,6 +136,9 @@ pub struct BytecodeMethod<'gc> {
     /// The parameter signature of this method.
     pub signature: Vec<ParamConfig<'gc>>,
 
+    pub has_resolved_signature: Cell<bool>,
+    pub resolved_signature: GcCell<'gc, Vec<ResolvedParamConfig<'gc>>>,
+
     /// The return type of this method.
     pub return_type: Multiname<'gc>,
 
@@ -160,6 +179,8 @@ impl<'gc> BytecodeMethod<'gc> {
                         abc_method: abc_method.0,
                         abc_method_body: Some(index as u32),
                         signature,
+                        has_resolved_signature: Cell::new(false),
+                        resolved_signature: GcCell::allocate(activation.context.gc_context, vec![]),
                         return_type,
                         is_function,
                     });
@@ -173,6 +194,8 @@ impl<'gc> BytecodeMethod<'gc> {
             abc_method: abc_method.0,
             abc_method_body: None,
             signature,
+            has_resolved_signature: Cell::new(false),
+            resolved_signature: GcCell::allocate(activation.context.gc_context, vec![]),
             return_type: Multiname::any(),
             is_function,
         })
@@ -207,6 +230,25 @@ impl<'gc> BytecodeMethod<'gc> {
     /// Get the list of method params for this method.
     pub fn signature(&self) -> &[ParamConfig<'gc>] {
         &self.signature
+    }
+
+    pub fn resolved_signature(
+        &self,
+        activation: &mut Activation<'_, 'gc, '_>,
+    ) -> GcCell<'gc, Vec<ResolvedParamConfig<'gc>>> {
+        if !self.has_resolved_signature.get() {
+            self.has_resolved_signature.set(true);
+            let mut write = self.resolved_signature.write(activation.context.gc_context);
+            for param in &self.signature {
+                let t = activation.resolve_type(&param.param_type_name).unwrap();
+                write.push(ResolvedParamConfig {
+                    param_name: param.param_name,
+                    param_type: t,
+                    default_value: param.default_value,
+                });
+            }
+        }
+        return self.resolved_signature;
     }
 
     /// Get the name of this method.
@@ -267,14 +309,39 @@ pub struct NativeMethod<'gc> {
     /// The parameter signature of the method.
     pub signature: Vec<ParamConfig<'gc>>,
 
+    pub has_resolved_signature: Cell<bool>,
+    pub resolved_signature: GcCell<'gc, Vec<ResolvedParamConfig<'gc>>>,
+
     /// Whether or not this method accepts parameters beyond those
     /// mentioned in the parameter list.
     pub is_variadic: bool,
 }
 
+impl<'gc> NativeMethod<'gc> {
+    pub fn resolved_signature(
+        &self,
+        activation: &mut Activation<'_, 'gc, '_>,
+    ) -> GcCell<'gc, Vec<ResolvedParamConfig<'gc>>> {
+        if !self.has_resolved_signature.get() {
+            self.has_resolved_signature.set(true);
+            let mut write = self.resolved_signature.write(activation.context.gc_context);
+            for param in &self.signature {
+                let t = activation.resolve_type(&param.param_type_name).unwrap();
+                write.push(ResolvedParamConfig {
+                    param_name: param.param_name,
+                    param_type: t,
+                    default_value: param.default_value,
+                });
+            }
+        }
+        return self.resolved_signature;
+    }
+}
+
 unsafe impl<'gc> Collect for NativeMethod<'gc> {
     fn trace(&self, cc: CollectionContext) {
         self.signature.trace(cc);
+        self.resolved_signature.trace(cc);
     }
 }
 
@@ -322,6 +389,8 @@ impl<'gc> Method<'gc> {
                 method,
                 name,
                 signature,
+                has_resolved_signature: Cell::new(false),
+                resolved_signature: GcCell::allocate(mc, vec![]),
                 is_variadic,
             },
         ))
@@ -339,6 +408,8 @@ impl<'gc> Method<'gc> {
                 method,
                 name,
                 signature: Vec::new(),
+                has_resolved_signature: Cell::new(false),
+                resolved_signature: GcCell::allocate(mc, vec![]),
                 is_variadic: true,
             },
         ))

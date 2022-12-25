@@ -4,7 +4,7 @@ use crate::avm2::array::ArrayStorage;
 use crate::avm2::class::Class;
 use crate::avm2::domain::Domain;
 use crate::avm2::error::type_error;
-use crate::avm2::method::{BytecodeMethod, Method, ParamConfig};
+use crate::avm2::method::{BytecodeMethod, Method, ResolvedParamConfig};
 use crate::avm2::object::{
     ArrayObject, ByteArrayObject, ClassObject, FunctionObject, NamespaceObject, ScriptObject,
 };
@@ -272,7 +272,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
     ///
     /// This returns an error if a type is named but does not exist; or if the
     /// typed named is not a class object.
-    fn resolve_type(
+    pub fn resolve_type(
         &mut self,
         type_name: &Multiname<'gc>,
     ) -> Result<Option<ClassObject<'gc>>, Error<'gc>> {
@@ -320,14 +320,14 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
         &mut self,
         method_name: &str,
         value: Option<&Value<'gc>>,
-        param_config: &ParamConfig<'gc>,
+        param_config: &ResolvedParamConfig<'gc>,
         index: usize,
     ) -> Result<Value<'gc>, Error<'gc>> {
         let arg = if let Some(value) = value {
             Cow::Borrowed(value)
         } else if let Some(default) = &param_config.default_value {
             Cow::Borrowed(default)
-        } else if param_config.param_type_name.is_any() {
+        } else if param_config.param_type.is_none() {
             return Ok(Value::Undefined);
         } else {
             return Err(format!(
@@ -337,7 +337,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
             .into());
         };
 
-        let param_type = self.resolve_type(&param_config.param_type_name)?;
+        let param_type = param_config.param_type;
 
         if let Some(param_type) = param_type {
             arg.coerce_to_type(self, param_type)
@@ -357,7 +357,7 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
         &mut self,
         method_name: &str,
         user_arguments: &[Value<'gc>],
-        signature: &[ParamConfig<'gc>],
+        signature: &[ResolvedParamConfig<'gc>],
     ) -> Result<Vec<Value<'gc>>, Error<'gc>> {
         let mut arguments_list = Vec::new();
         for (i, (arg, param_config)) in user_arguments.iter().zip(signature.iter()).enumerate() {
@@ -460,6 +460,10 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
             max_scope_size: (body.max_scope_depth - body.init_scope_depth) as usize,
             context,
         };
+
+        let signature = method.resolved_signature(&mut activation);
+        let signature = signature.read();
+        let signature = &*signature;
 
         //Statically verify all non-variadic, provided parameters.
         let arguments_list =
