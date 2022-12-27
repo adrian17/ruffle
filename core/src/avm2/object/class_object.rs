@@ -13,7 +13,6 @@ use crate::avm2::value::Value;
 use crate::avm2::vtable::{ClassBoundMethod, VTable};
 use crate::avm2::Error;
 use crate::avm2::Multiname;
-use crate::avm2::QName;
 use crate::avm2::TranslationUnit;
 use crate::string::AvmString;
 use fnv::FnvHashMap;
@@ -247,6 +246,8 @@ impl<'gc> ClassObject<'gc> {
 
         class.read().validate_class(self.superclass_object())?;
 
+        self.resolve_interface_names(activation)?;
+
         self.instance_vtable().init_vtable(
             self,
             class.read().instance_traits(),
@@ -254,6 +255,7 @@ impl<'gc> ClassObject<'gc> {
             self.superclass_object().map(|cls| cls.instance_vtable()),
             activation,
         )?;
+        self.instance_vtable().link_interfaces(self, activation);
 
         // class vtable == class traits + Class instance traits
         self.class_vtable().init_vtable(
@@ -264,7 +266,6 @@ impl<'gc> ClassObject<'gc> {
             activation,
         )?;
 
-        self.link_interfaces(activation)?;
         self.install_class_vtable_and_slots(activation);
         self.run_class_initializer(activation)?;
 
@@ -298,12 +299,7 @@ impl<'gc> ClassObject<'gc> {
         Ok(())
     }
 
-    /// Link this class to it's interfaces.
-    ///
-    /// This should be done after all instance traits has been resolved, as
-    /// instance traits will be resolved to their corresponding methods at this
-    /// time.
-    pub fn link_interfaces(
+    pub fn resolve_interface_names(
         self,
         activation: &mut Activation<'_, 'gc, '_>,
     ) -> Result<(), Error<'gc>> {
@@ -341,32 +337,6 @@ impl<'gc> ClassObject<'gc> {
 
         if !interfaces.is_empty() {
             write.interfaces = interfaces;
-        }
-
-        //At this point, we need to reresolve *all* interface traits.
-        //Otherwise we won't get overrides.
-        drop(write);
-
-        let mut class = Some(self);
-
-        while let Some(cls) = class {
-            for interface in cls.interfaces() {
-                let iface_static_class = interface.inner_class_definition();
-                let iface_read = iface_static_class.read();
-
-                for interface_trait in iface_read.instance_traits() {
-                    if !interface_trait.name().namespace().is_public() {
-                        let public_name = QName::dynamic_name(interface_trait.name().local_name());
-                        self.instance_vtable().copy_property_for_interface(
-                            activation.context.gc_context,
-                            public_name,
-                            interface_trait.name(),
-                        );
-                    }
-                }
-            }
-
-            class = cls.superclass_object();
         }
 
         Ok(())
@@ -919,6 +889,7 @@ impl<'gc> TObject<'gc> for ClassObject<'gc> {
         let constructor = self.0.read().constructor.clone();
         let native_constructor = self.0.read().native_constructor.clone();
         let call_handler = self.0.read().call_handler.clone();
+        let interfaces = self.0.read().interfaces.clone();
 
         let mut class_object = ClassObject(GcCell::allocate(
             activation.context.gc_context,
@@ -935,7 +906,7 @@ impl<'gc> TObject<'gc> for ClassObject<'gc> {
                 call_handler,
                 params: Some(object_param),
                 applications: Default::default(),
-                interfaces: Vec::new(),
+                interfaces,
                 instance_vtable: VTable::empty(activation.context.gc_context),
                 class_vtable: VTable::empty(activation.context.gc_context),
             },
@@ -966,7 +937,6 @@ impl<'gc> TObject<'gc> for ClassObject<'gc> {
         )?;
 
         class_object.link_prototype(activation, class_proto)?;
-        class_object.link_interfaces(activation)?;
         class_object.install_class_vtable_and_slots(activation);
         class_object.run_class_initializer(activation)?;
 

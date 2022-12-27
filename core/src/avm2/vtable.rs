@@ -449,20 +449,26 @@ impl<'gc> VTable<'gc> {
         new_slot_id
     }
 
-    /// Install an existing trait under a new name, provided by interface.
-    /// This should only ever be called by `link_interfaces`.
-    pub fn copy_property_for_interface(
+    pub fn link_interfaces(
         self,
-        mc: MutationContext<'gc, '_>,
-        public_name: QName<'gc>,
-        interface_name: QName<'gc>,
+        defining_class: ClassObject<'gc>,
+        activation: &mut Activation<'_, 'gc, '_>,
     ) {
-        let mut write = self.0.write(mc);
+        let mut write = self.0.write(activation.context.gc_context);
 
-        let prop = write.resolved_traits.get(public_name).cloned();
+        for interface in defining_class.interfaces() {
+            let interface_vtable = interface.instance_vtable();
+            let interface_vtable = interface_vtable.0.read();
 
-        if let Some(prop) = prop {
-            write.resolved_traits.insert(interface_name, prop);
+            for (name, ns, _) in interface_vtable.resolved_traits.iter() {
+                let public_name = QName::dynamic_name(name);
+                let prop = write.resolved_traits.get(public_name).cloned();
+
+                if let Some(prop) = prop {
+                    let interface_name = QName::new(ns, name);
+                    write.resolved_traits.insert(interface_name, prop);
+                }
+            }
         }
     }
 }
