@@ -1,0 +1,13 @@
+== Extending interfaces ==
+called 1
+called 1
+called 2
+called 1
+called 2
+== Namespace collision edge cases ==
+ns func1
+public func1
+public func1
+public func2
+public func2
+public func2
