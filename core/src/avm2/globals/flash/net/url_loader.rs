@@ -3,7 +3,6 @@
 use crate::avm2::activation::Activation;
 use crate::avm2::object::TObject;
 use crate::avm2::value::Value;
-use crate::avm2::Multiname;
 use crate::avm2::{Error, Object};
 use crate::backend::navigator::{NavigationMethod, Request};
 use crate::loader::DataFormat;
@@ -22,7 +21,7 @@ pub fn load<'gc>(
         };
 
         let data_format = this
-            .get_property(&Multiname::public("dataFormat"), activation)?
+            .get_public_property("dataFormat", activation)?
             .coerce_to_string(activation)?;
 
         let data_format = if &data_format == b"binary" {
@@ -47,11 +46,11 @@ fn spawn_fetch<'gc>(
     data_format: DataFormat,
 ) -> Result<Value<'gc>, Error<'gc>> {
     let url = url_request
-        .get_property(&Multiname::public("url"), activation)?
+        .get_public_property("url", activation)?
         .coerce_to_string(activation)?;
 
     let method_str = url_request
-        .get_property(&Multiname::public("method"), activation)?
+        .get_public_property("method", activation)?
         .coerce_to_string(activation)?;
 
     let method = NavigationMethod::from_method_str(&method_str).unwrap_or_else(|| {

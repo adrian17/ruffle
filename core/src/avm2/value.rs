@@ -2,7 +2,6 @@
 
 use crate::avm2::activation::Activation;
 use crate::avm2::error;
-use crate::avm2::globals::NS_VECTOR;
 use crate::avm2::object::{ClassObject, NamespaceObject, Object, PrimitiveObject, TObject};
 use crate::avm2::script::TranslationUnit;
 use crate::avm2::Error;
@@ -532,7 +531,7 @@ pub fn abc_default_value<'gc>(
         | AbcDefaultValue::StaticProtected(ns)
         | AbcDefaultValue::Private(ns) => Ok(NamespaceObject::from_namespace(
             activation,
-            Namespace::from_abc_namespace(translation_unit, *ns, activation.context.gc_context)?,
+            translation_unit.pool_namespace(*ns, activation.context.gc_context)?,
         )?
         .into()),
     }
@@ -637,9 +636,9 @@ impl<'gc> Value<'gc> {
                 let object = *o;
 
                 if let Value::Object(_) =
-                    object.get_property(&Multiname::public("toString"), activation)?
+                    object.get_public_property("toString", activation)?
                 {
-                    prim = object.call_property(&Multiname::public("toString"), &[], activation)?;
+                    prim = object.call_public_property("toString", &[], activation)?;
                 }
 
                 if prim.is_primitive() {
@@ -647,9 +646,9 @@ impl<'gc> Value<'gc> {
                 }
 
                 if let Value::Object(_) =
-                    object.get_property(&Multiname::public("valueOf"), activation)?
+                    object.get_public_property("valueOf", activation)?
                 {
-                    prim = object.call_property(&Multiname::public("valueOf"), &[], activation)?;
+                    prim = object.call_public_property("valueOf", &[], activation)?;
                 }
 
                 if prim.is_primitive() {
@@ -663,9 +662,9 @@ impl<'gc> Value<'gc> {
                 let object = *o;
 
                 if let Value::Object(_) =
-                    object.get_property(&Multiname::public("valueOf"), activation)?
+                    object.get_public_property("valueOf", activation)?
                 {
-                    prim = object.call_property(&Multiname::public("valueOf"), &[], activation)?;
+                    prim = object.call_public_property("valueOf", &[], activation)?;
                 }
 
                 if prim.is_primitive() {
@@ -673,9 +672,9 @@ impl<'gc> Value<'gc> {
                 }
 
                 if let Value::Object(_) =
-                    object.get_property(&Multiname::public("toString"), activation)?
+                    object.get_public_property("toString", activation)?
                 {
-                    prim = object.call_property(&Multiname::public("toString"), &[], activation)?;
+                    prim = object.call_public_property("toString", &[], activation)?;
                 }
 
                 if prim.is_primitive() {
@@ -969,14 +968,16 @@ impl<'gc> Value<'gc> {
 
             if let Some(vector) = object.as_vector_storage() {
                 let name = class.inner_class_definition().read().name();
-                if name == QName::new(Namespace::package(NS_VECTOR), "Vector")
-                    || (name == QName::new(Namespace::internal(NS_VECTOR), "Vector$int")
+                let vector_public_namespace = activation.avm2().vector_public_namespace;
+                let vector_internal_namespace = activation.avm2().vector_internal_namespace;
+                if name == QName::new(vector_public_namespace, "Vector")
+                    || (name == QName::new(vector_internal_namespace, "Vector$int")
                         && vector.value_type() == activation.avm2().classes().int)
-                    || (name == QName::new(Namespace::internal(NS_VECTOR), "Vector$uint")
+                    || (name == QName::new(vector_internal_namespace, "Vector$uint")
                         && vector.value_type() == activation.avm2().classes().uint)
-                    || (name == QName::new(Namespace::internal(NS_VECTOR), "Vector$number")
+                    || (name == QName::new(vector_internal_namespace, "Vector$number")
                         && vector.value_type() == activation.avm2().classes().number)
-                    || (name == QName::new(Namespace::internal(NS_VECTOR), "Vector$object")
+                    || (name == QName::new(vector_internal_namespace, "Vector$object")
                         && vector.value_type() == activation.avm2().classes().object)
                 {
                     return Ok(*self);

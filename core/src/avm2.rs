@@ -56,7 +56,7 @@ pub use crate::avm2::domain::Domain;
 pub use crate::avm2::error::Error;
 pub use crate::avm2::globals::flash::ui::context_menu::make_context_menu_state;
 pub use crate::avm2::multiname::Multiname;
-pub use crate::avm2::namespace::Namespace;
+pub use crate::avm2::namespace::{Namespace, NamespaceData};
 pub use crate::avm2::object::{
     ArrayObject, ClassObject, EventObject, Object, ScriptObject, SoundChannelObject, StageObject,
     TObject,
@@ -86,6 +86,13 @@ pub struct Avm2<'gc> {
 
     /// System classes.
     system_classes: Option<SystemClasses<'gc>>,
+
+    public_namespace: Namespace<'gc>,
+    as3_namespace: Namespace<'gc>,
+    pub vector_public_namespace: Namespace<'gc>,
+    pub vector_internal_namespace: Namespace<'gc>,
+    pub proxy_namespace: Namespace<'gc>,
+    pub ruffle_private_namespace: Namespace<'gc>,
 
     #[collect(require_static)]
     native_method_table: &'static [Option<(&'static str, NativeMethodImpl)>],
@@ -121,6 +128,14 @@ impl<'gc> Avm2<'gc> {
             call_stack: GcCell::allocate(mc, CallStack::new()),
             globals,
             system_classes: None,
+
+            public_namespace: Namespace::package("", mc),
+            as3_namespace: Namespace::package("http://adobe.com/AS3/2006/builtin", mc),
+            vector_public_namespace: Namespace::package("__AS3__.vec", mc),
+            vector_internal_namespace: Namespace::internal("__AS3__.vec", mc),
+            proxy_namespace: Namespace::package("http://www.adobe.com/2006/actionscript/flash/proxy", mc),
+            ruffle_private_namespace: Namespace::private("", mc),
+
             native_method_table: Default::default(),
             native_instance_allocator_table: Default::default(),
             native_instance_init_table: Default::default(),
@@ -142,6 +157,14 @@ impl<'gc> Avm2<'gc> {
     /// This function panics if the interpreter has not yet been initialized.
     pub fn classes(&self) -> &SystemClasses<'gc> {
         self.system_classes.as_ref().unwrap()
+    }
+
+    pub fn public_namespace(&self) -> Namespace<'gc> {
+        self.public_namespace
+    }
+
+    pub fn as3_namespace(&self) -> Namespace<'gc> {
+        self.as3_namespace
     }
 
     /// Run a script's initializer method.
