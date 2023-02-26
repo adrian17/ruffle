@@ -3,11 +3,15 @@
 use crate::avm2::activation::Activation;
 use crate::avm2::object::{Object, TObject};
 use crate::avm2::value::Value;
-use crate::avm2::Error;
-use crate::avm2::Multiname;
 use crate::avm2::Namespace;
 use crate::avm2::{ArrayObject, ArrayStorage};
-use crate::display_object::{DisplayObject, HitTestOptions, TDisplayObject};
+use crate::avm2::{ClassObject, Error};
+use crate::avm2::{Multiname, StageObject};
+use crate::bitmap::bitmap_data::BitmapData;
+use crate::display_object::{
+    Avm2Button, Bitmap, DisplayObject, EditText, Graphic, HitTestOptions, LoaderDisplay, MovieClip,
+    TDisplayObject,
+};
 use crate::ecma_conversions::round_to_even;
 use crate::frame_lifecycle::catchup_display_object_to_frame;
 use crate::prelude::*;
@@ -15,11 +19,74 @@ use crate::string::AvmString;
 use crate::types::{Degrees, Percent};
 use crate::vminterface::Instantiator;
 use crate::{avm2_stub_getter, avm2_stub_setter};
+use gc_arena::GcCell;
 use std::str::FromStr;
 use swf::Twips;
 use swf::{BlendMode, Rectangle};
 
-pub use crate::avm2::object::stage_allocator as display_object_allocator;
+/// A class instance allocator that allocates Stage objects for DisplayObjects.
+pub fn display_object_allocator<'gc>(
+    class: ClassObject<'gc>,
+    activation: &mut Activation<'_, 'gc>,
+) -> Result<Object<'gc>, Error<'gc>> {
+    // Iterate the inheritance chain, starting from `this` and working backwards through `super`s
+    // This accounts for the cases where a super may be linked to symbol, but `this` may not be
+    let mut class_object = Some(class);
+    let mut display_object = None;
+    while let Some(class) = class_object {
+        if let Some((movie, symbol)) = activation
+            .context
+            .library
+            .avm2_class_registry()
+            .class_symbol(class)
+        {
+            let child = activation
+                .context
+                .library
+                .library_for_movie_mut(movie)
+                .instantiate_by_id(symbol, activation.context.gc_context)?;
+
+            // [NA] Should these run for everything? Previously it was only here
+            child.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
+            catchup_display_object_to_frame(&mut activation.context, child);
+
+            display_object = Some(child);
+        }
+        class_object = class.superclass_object();
+    }
+
+    let display_object = display_object.unwrap_or_else(|| {
+        let movie = activation.context.swf.clone();
+        let textfield = activation.avm2().classes().textfield;
+        let simplebutton = activation.avm2().classes().simplebutton;
+        let shape = activation.avm2().classes().shape;
+        let loader = activation.avm2().classes().loader;
+        let bitmap = activation.avm2().classes().bitmap;
+        if class == textfield {
+            EditText::new(&mut activation.context, movie, 0.0, 0.0, 100.0, 100.0).into()
+        } else if class == simplebutton {
+            let new_do = Avm2Button::empty_button(&mut activation.context);
+            // [NA] Buttons specifically need to PO'd
+            new_do.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
+            new_do.into()
+        } else if class == shape {
+            Graphic::new_with_avm2(&mut activation.context).into()
+        } else if class == loader {
+            LoaderDisplay::new_with_avm2(
+                activation.context.gc_context,
+                activation.context.swf.clone(),
+            )
+            .into()
+        } else if class == bitmap {
+            let bitmap_data = GcCell::allocate(activation.context.gc_context, BitmapData::dummy());
+            Bitmap::new_with_bitmap_data(&mut activation.context, 0, bitmap_data, false).into()
+        } else {
+            let dobj = MovieClip::new(movie, activation.context.gc_context);
+            dobj.into()
+        }
+    });
+    Ok(StageObject::for_display_object(activation, display_object, class)?.into())
+}
 
 /// Implements `flash.display.DisplayObject`'s native instance constructor.
 pub fn native_instance_init<'gc>(
@@ -29,39 +96,6 @@ pub fn native_instance_init<'gc>(
 ) -> Result<Value<'gc>, Error<'gc>> {
     if let Some(this) = this {
         activation.super_init(this, &[])?;
-
-        if this.as_display_object().is_none() {
-            let mut class_object = this.instance_of();
-
-            // Iterate the inheritance chain, starting from `this` and working backwards through `super`s
-            // This accounts for the cases where a super may be linked to symbol, but `this` may not be
-            while let Some(class) = class_object {
-                if let Some((movie, symbol)) = activation
-                    .context
-                    .library
-                    .avm2_class_registry()
-                    .class_symbol(class)
-                {
-                    let mut child = activation
-                        .context
-                        .library
-                        .library_for_movie_mut(movie)
-                        .instantiate_by_id(symbol, activation.context.gc_context)?;
-
-                    this.init_display_object(activation.context.gc_context, child);
-                    child.set_object2(activation.context.gc_context, this);
-
-                    child.post_instantiation(
-                        &mut activation.context,
-                        None,
-                        Instantiator::Avm2,
-                        false,
-                    );
-                    catchup_display_object_to_frame(&mut activation.context, child);
-                }
-                class_object = class.superclass_object();
-            }
-        }
 
         if let Some(dobj) = this.as_display_object() {
             if let Some(container) = dobj.as_container() {

@@ -4,8 +4,7 @@ use crate::avm2::activation::Activation;
 use crate::avm2::object::{Object, TObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
-use crate::display_object::{Avm2Button, ButtonTracking, TDisplayObject};
-use crate::vminterface::Instantiator;
+use crate::display_object::{ButtonTracking, TDisplayObject};
 use swf::ButtonState;
 
 pub use crate::avm2::globals::flash::media::soundmixer::{
@@ -21,13 +20,10 @@ pub fn init<'gc>(
     if let Some(this) = this {
         activation.super_init(this, &[])?;
 
-        if this.as_display_object().is_none() {
-            let mut new_do = Avm2Button::empty_button(&mut activation.context);
-
-            new_do.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
-            this.init_display_object(activation.context.gc_context, new_do.into());
-            new_do.set_object2(activation.context.gc_context, this);
-
+        if let Some(new_do) = this
+            .as_display_object()
+            .and_then(|this| this.as_avm2_button())
+        {
             let up_state = args
                 .get(0)
                 .cloned()
@@ -59,6 +55,8 @@ pub fn init<'gc>(
                 .as_object()
                 .and_then(|o| o.as_display_object());
             new_do.set_state_child(&mut activation.context, ButtonState::HIT_TEST, hit_state);
+        } else {
+            unreachable!();
         }
     }
 

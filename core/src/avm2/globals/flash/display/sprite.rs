@@ -5,10 +5,8 @@ use crate::avm2::object::{Object, StageObject, TObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
 use crate::avm2::Multiname;
-use crate::display_object::{MovieClip, SoundTransform, TDisplayObject};
-use crate::tag_utils::SwfMovie;
+use crate::display_object::{SoundTransform, TDisplayObject};
 use ruffle_render::bounding_box::BoundingBox;
-use std::sync::Arc;
 use swf::Twips;
 
 /// Implements `flash.display.Sprite`'s `init` method, which is called from the constructor
@@ -19,17 +17,6 @@ pub fn init<'gc>(
 ) -> Result<Value<'gc>, Error<'gc>> {
     if let Some(this) = this {
         activation.super_init(this, &[])?;
-
-        if this.as_display_object().is_none() {
-            let class_object = this
-                .instance_of()
-                .ok_or("Attempted to construct Sprite on a bare object")?;
-            let movie = Arc::new(SwfMovie::empty(activation.context.swf.version()));
-            let new_do =
-                MovieClip::new_with_avm2(movie, this, class_object, activation.context.gc_context);
-
-            this.init_display_object(activation.context.gc_context, new_do.into());
-        }
     }
 
     Ok(Value::Undefined)

@@ -8,7 +8,7 @@ use crate::avm2::Error;
 
 use crate::bitmap::bitmap_data::BitmapData;
 use crate::character::Character;
-use crate::display_object::{Bitmap, TDisplayObject};
+use crate::display_object::TDisplayObject;
 use crate::{avm2_stub_getter, avm2_stub_setter};
 use gc_arena::GcCell;
 
@@ -43,6 +43,10 @@ pub fn init<'gc>(
             //We are being initialized by the movie. This means that we
             //need to create bitmap data right away, since all AVM2 bitmaps
             //hold bitmap data.
+
+            if let Some(bitmap_data) = bitmap_data {
+                bitmap.set_bitmap_data(&mut activation.context, bitmap_data);
+            }
 
             let bd_object = if let Some(bd_class) = bitmap.avm2_bitmapdata_class() {
                 bd_class.construct(activation, &[])?
@@ -93,17 +97,7 @@ pub fn init<'gc>(
 
             bitmap.set_smoothing(activation.context.gc_context, smoothing);
         } else {
-            //We are being initialized by AVM2 (and aren't associated with a
-            //Bitmap subclass).
-
-            let bitmap_data = bitmap_data.unwrap_or_else(|| {
-                GcCell::allocate(activation.context.gc_context, BitmapData::dummy())
-            });
-
-            let bitmap =
-                Bitmap::new_with_bitmap_data(&mut activation.context, 0, bitmap_data, smoothing);
-
-            this.init_display_object(activation.context.gc_context, bitmap.into());
+            unreachable!();
         }
     }
 

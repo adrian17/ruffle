@@ -256,23 +256,26 @@ impl<'gc> TDisplayObject<'gc> for Bitmap<'gc> {
         &self,
         context: &mut UpdateContext<'_, 'gc>,
         _init_object: Option<avm1::Object<'gc>>,
-        _instantiated_by: Instantiator,
+        instantiated_by: Instantiator,
         run_frame: bool,
     ) {
         if context.is_action_script_3() {
             let mut activation = Avm2Activation::from_nothing(context.reborrow());
-            let bitmap = self
-                .avm2_bitmap_class()
-                .unwrap_or_else(|| activation.context.avm2.classes().bitmap);
-            match Avm2StageObject::for_display_object_childless(
-                &mut activation,
-                (*self).into(),
-                bitmap,
-            ) {
-                Ok(object) => {
-                    self.0.write(activation.context.gc_context).avm2_object = Some(object.into())
+            if !instantiated_by.is_avm() {
+                let bitmap = self
+                    .avm2_bitmap_class()
+                    .unwrap_or_else(|| activation.context.avm2.classes().bitmap);
+                match Avm2StageObject::for_display_object_childless(
+                    &mut activation,
+                    (*self).into(),
+                    bitmap,
+                ) {
+                    Ok(object) => {
+                        self.0.write(activation.context.gc_context).avm2_object =
+                            Some(object.into())
+                    }
+                    Err(e) => tracing::error!("Got error when creating AVM2 side of bitmap: {}", e),
                 }
-                Err(e) => tracing::error!("Got error when creating AVM2 side of bitmap: {}", e),
             }
 
             self.on_construction_complete(context);
