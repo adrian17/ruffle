@@ -968,20 +968,10 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         method: Gc<'gc, BytecodeMethod<'gc>>,
         opcodes: &[Op],
     ) -> Result<FrameControl<'gc>, Error<'gc>> {
-        self.actions_since_timeout_check += 1;
-        if self.actions_since_timeout_check >= 2000 {
-            self.actions_since_timeout_check = 0;
-            if self.context.update_start.elapsed() >= self.context.max_execution_duration {
-                return Err(
-                    "A script in this movie has taken too long to execute and has been terminated."
-                        .into(),
-                );
-            }
-        }
 
         let op = &opcodes[self.ip as usize];
         self.ip += 1;
-        avm_debug!(self.avm2(), "Opcode: {op:?}");
+        //avm_debug!(self.avm2(), "Opcode: {op:?}");
 
         {
             let result = match op {
@@ -2373,11 +2363,13 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     }
 
     fn op_swap(&mut self) -> Result<FrameControl<'gc>, Error<'gc>> {
-        let value2 = self.pop_stack();
-        let value1 = self.pop_stack();
+        let value2 = self.avm2().pop_fast();
+        let value1 = self.avm2().pop_fast();
 
-        self.push_stack(value2);
-        self.push_stack(value1);
+        self.avm2().push_fast(value2);
+        self.avm2().push_fast(value1);
+        //self.push_stack(value2);
+        //self.push_stack(value1);
 
         Ok(FrameControl::Continue)
     }

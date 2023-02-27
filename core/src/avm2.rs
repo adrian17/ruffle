@@ -386,13 +386,26 @@ impl<'gc> Avm2<'gc> {
         }
         let mut value = value.into();
         if let Value::Object(o) = value {
-            if let Some(prim) = o.as_primitive() {
-                value = *prim;
+            if let Object::PrimitiveObject(_) = o {
+                if let Some(prim) = o.as_primitive() {
+                    value = *prim;
+                }
             }
         }
 
-        avm_debug!(self, "Stack push {}: {value:?}", self.stack.len());
+        //avm_debug!(self, "Stack push {}: {value:?}", self.stack.len());
         self.stack.push(value);
+    }
+
+    fn push_fast(&mut self, value: impl Into<Value<'gc>>) {
+        //self.stack.push(value.into());
+        let stack = &mut self.stack;
+        let value: Value<'gc> = value.into();
+        unsafe {
+            let end = stack.as_mut_ptr().add(stack.len());
+            std::ptr::write(end, value);
+            stack.set_len(stack.len() + 1);
+        }
     }
 
     /// Retrieve the top-most value on the operand stack.
@@ -405,9 +418,19 @@ impl<'gc> Avm2<'gc> {
             self.stack.pop().unwrap_or(Value::Undefined)
         };
 
-        avm_debug!(self, "Stack pop {}: {value:?}", self.stack.len());
+        //avm_debug!(self, "Stack pop {}: {value:?}", self.stack.len());
 
         value
+    }
+
+    #[allow(clippy::let_and_return)]
+    fn pop_fast(&mut self) -> Value<'gc> {
+        //self.stack.pop().unwrap_or(Value::Undefined)
+        let stack = &mut self.stack;
+        unsafe { 
+            stack.set_len(stack.len() - 1);
+            std::ptr::read(stack.as_ptr().add(stack.len()))
+        } 
     }
 
     /// Peek the n-th value from the end of the operand stack.
