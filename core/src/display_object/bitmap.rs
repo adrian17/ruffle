@@ -3,7 +3,7 @@
 use crate::avm1;
 use crate::avm2::{
     Activation as Avm2Activation, ClassObject as Avm2ClassObject, Object as Avm2Object,
-    StageObject as Avm2StageObject, Value as Avm2Value,
+    StageObject as Avm2StageObject, Value as Avm2Value, BitmapDataObject as Avm2BitmapDataObject,
 };
 use crate::bitmap::bitmap_data::BitmapDataWrapper;
 use crate::context::{RenderContext, UpdateContext};
@@ -261,21 +261,44 @@ impl<'gc> TDisplayObject<'gc> for Bitmap<'gc> {
     ) {
         if context.is_action_script_3() {
             let mut activation = Avm2Activation::from_nothing(context.reborrow());
-            if !instantiated_by.is_avm() {
-                let bitmap = self
-                    .avm2_bitmap_class()
-                    .unwrap_or_else(|| activation.context.avm2.classes().bitmap);
-                match Avm2StageObject::for_display_object_childless(
+            if instantiated_by.is_avm() {
+                let bitmapdata_cls = activation.context.avm2.classes().bitmapdata;
+
+                // copy the data, so we don't share mutations
+
+                let bitmap_data = GcCell::allocate(activation.context.gc_context, crate::bitmap::bitmap_data::BitmapData::default());
+                use crate::avm2::globals::flash::display::bitmap_data::fill_bitmap_data_from_symbol;
+                fill_bitmap_data_from_symbol(&mut activation, &self, bitmap_data);
+                let bitmap_data_obj = Avm2BitmapDataObject::from_bitmap_data(
+                    &mut activation,
+                    bitmap_data,
+                    bitmapdata_cls
+                ).expect("can't throw from post_instantiation -_-");
+
+                self.set_bitmap_data(&mut activation.context, bitmap_data);
+            } else {
+                let bitmap_cls = self.avm2_bitmap_class().unwrap_or_else(|| activation.context.avm2.classes().bitmap);
+                let bitmapdata_cls = self.avm2_bitmapdata_class().unwrap_or_else(|| activation.context.avm2.classes().bitmapdata);
+
+                let bitmap = Avm2StageObject::for_display_object_childless(
                     &mut activation,
                     (*self).into(),
-                    bitmap,
-                ) {
-                    Ok(object) => {
-                        self.0.write(activation.context.gc_context).avm2_object =
-                            Some(object.into())
-                    }
-                    Err(e) => tracing::error!("Got error when creating AVM2 side of bitmap: {}", e),
-                }
+                    bitmap_cls,
+                ).expect("can't throw from post_instantiation -_-");
+                self.0.write(activation.context.gc_context).avm2_object = Some(bitmap.into());
+
+                // copy the data, so we don't share mutations
+
+                let bitmap_data = GcCell::allocate(activation.context.gc_context, crate::bitmap::bitmap_data::BitmapData::default());
+                use crate::avm2::globals::flash::display::bitmap_data::fill_bitmap_data_from_symbol;
+                fill_bitmap_data_from_symbol(&mut activation, &self, bitmap_data);
+                let bitmap_data_obj = Avm2BitmapDataObject::from_bitmap_data(
+                    &mut activation,
+                    bitmap_data,
+                    bitmapdata_cls
+                ).expect("can't throw from post_instantiation -_-");
+
+                self.set_bitmap_data(&mut activation.context, bitmap_data);
             }
 
             self.on_construction_complete(context);

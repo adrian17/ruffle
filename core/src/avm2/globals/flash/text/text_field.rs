@@ -1,14 +1,64 @@
 //! `flash.text.TextField` builtin/prototype
 
 use crate::avm2::activation::Activation;
-use crate::avm2::object::{Object, TObject, TextFormatObject};
+use crate::avm2::object::{Object, TObject, ClassObject, StageObject, TextFormatObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
-use crate::display_object::{AutoSizeMode, TDisplayObject, TextSelection};
+use crate::display_object::{EditText, AutoSizeMode, TDisplayObject, TextSelection};
 use crate::html::TextFormat;
 use crate::string::AvmString;
 use crate::{avm2_stub_getter, avm2_stub_setter};
 use swf::Color;
+
+pub fn text_field_allocator<'gc>(
+    class: ClassObject<'gc>,
+    activation: &mut Activation<'_, 'gc>,
+) -> Result<Object<'gc>, Error<'gc>> {
+
+    use crate::frame_lifecycle::catchup_display_object_to_frame;
+    use crate::vminterface::Instantiator;
+
+    let textfield_cls = activation.avm2().classes().textfield;
+
+    let mut class_object = Some(class);
+    while let Some(class) = class_object {
+
+        if class == textfield_cls {
+            use std::sync::Arc;
+            use crate::tag_utils::SwfMovie;
+            // note: no clue why this must work like this
+            let movie = Arc::new(SwfMovie::empty(activation.context.swf.version()));
+            let mut display_object = EditText::new(&mut activation.context, movie, 0.0, 0.0, 100.0, 100.0).into();
+            let obj = StageObject::for_display_object(activation, display_object, class)?;
+            display_object.set_object2(activation.context.gc_context, obj.into());
+            return Ok(obj.into());
+        }
+
+        if let Some((movie, symbol)) = activation
+            .context
+            .library
+            .avm2_class_registry()
+            .class_symbol(class)
+        {
+            let mut child = activation
+                .context
+                .library
+                .library_for_movie_mut(movie)
+                .instantiate_by_id(symbol, activation.context.gc_context)?;
+
+            let obj = StageObject::for_display_object(activation, child, class)?;
+            child.set_object2(activation.context.gc_context, obj.into());
+
+            // [NA] Should these run for everything?
+            child.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
+            catchup_display_object_to_frame(&mut activation.context, child);
+
+            return Ok(obj.into());
+        }
+        class_object = class.superclass_object();
+    }
+    unreachable!("A TextField subclass should have TextField in superclass chain");
+}
 
 /// Implements `flash.text.TextField`'s `init` method, which is called from the constructor.
 pub fn init<'gc>(

@@ -1,6 +1,7 @@
 package flash.text {
     import flash.display.InteractiveObject;
-    
+
+    [Ruffle(InstanceAllocator)]
     public class TextField extends InteractiveObject {
         public function TextField() {
             this.init();

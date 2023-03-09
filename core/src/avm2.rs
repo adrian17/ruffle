@@ -60,7 +60,7 @@ pub use crate::avm2::multiname::Multiname;
 pub use crate::avm2::namespace::{Namespace, NamespaceData};
 pub use crate::avm2::object::{
     ArrayObject, ClassObject, EventObject, Object, ScriptObject, SoundChannelObject, StageObject,
-    TObject,
+    TObject, BitmapDataObject,
 };
 pub use crate::avm2::qname::QName;
 pub use crate::avm2::value::Value;

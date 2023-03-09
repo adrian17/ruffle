@@ -1,4 +1,6 @@
 package flash.display {
+
+	[Ruffle(InstanceAllocator)]
     public class Shape extends DisplayObject {
         public function Shape() {
             this.init();

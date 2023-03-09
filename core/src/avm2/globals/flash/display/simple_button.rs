@@ -1,15 +1,64 @@
 //! `flash.display.SimpleButton` builtin/prototype
 
 use crate::avm2::activation::Activation;
-use crate::avm2::object::{Object, TObject};
+use crate::avm2::object::{ClassObject, Object, TObject, StageObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
-use crate::display_object::{ButtonTracking, TDisplayObject};
+use crate::display_object::{ButtonTracking, TDisplayObject, Avm2Button};
 use swf::ButtonState;
 
 pub use crate::avm2::globals::flash::media::soundmixer::{
     get_sound_transform, set_sound_transform,
 };
+
+pub fn simple_button_allocator<'gc>(
+    class: ClassObject<'gc>,
+    activation: &mut Activation<'_, 'gc>,
+) -> Result<Object<'gc>, Error<'gc>> {
+
+    use crate::frame_lifecycle::catchup_display_object_to_frame;
+    use crate::vminterface::Instantiator;
+
+    let simplebutton_cls = activation.avm2().classes().simplebutton;
+
+    let mut class_object = Some(class);
+    while let Some(class) = class_object {
+
+        if class == simplebutton_cls {
+            let button = Avm2Button::empty_button(&mut activation.context);
+            // [NA] Buttons specifically need to PO'd
+            button.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
+            let mut display_object = button.into();
+            let obj = StageObject::for_display_object(activation, display_object, class)?;
+            display_object.set_object2(activation.context.gc_context, obj.into());
+            return Ok(obj.into());
+        }
+
+        if let Some((movie, symbol)) = activation
+            .context
+            .library
+            .avm2_class_registry()
+            .class_symbol(class)
+        {
+            let mut child = activation
+                .context
+                .library
+                .library_for_movie_mut(movie)
+                .instantiate_by_id(symbol, activation.context.gc_context)?;
+
+            let obj = StageObject::for_display_object(activation, child, class)?;
+            child.set_object2(activation.context.gc_context, obj.into());
+
+            // [NA] Should these run for everything?
+            child.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
+            catchup_display_object_to_frame(&mut activation.context, child);
+
+            return Ok(obj.into());
+        }
+        class_object = class.superclass_object();
+    }
+    unreachable!("A SimpleButton subclass should have SimpleButton in superclass chain");
+}
 
 /// Implements `flash.display.SimpleButton`'s 'init' method. which is called from the constructor
 pub fn init<'gc>(

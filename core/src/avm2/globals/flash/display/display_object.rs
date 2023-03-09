@@ -30,6 +30,9 @@ pub fn display_object_allocator<'gc>(
     class: ClassObject<'gc>,
     activation: &mut Activation<'_, 'gc>,
 ) -> Result<Object<'gc>, Error<'gc>> {
+
+    panic!("This allocator should not be called!");
+
     // Iterate the inheritance chain, starting from `this` and working backwards through `super`s
     // This accounts for the cases where a super may be linked to symbol, but `this` may not be
     let mut class_object = Some(class);
