@@ -47,7 +47,7 @@ pub fn init<'gc>(
             if let Some(bitmap_data) = bitmap_data {
                 bitmap.set_bitmap_data(&mut activation.context, bitmap_data);
             }
-
+/*
             let bd_object = if let Some(bd_class) = bitmap.avm2_bitmapdata_class() {
                 bd_class.construct(activation, &[])?
             } else if let Some(b_class) = bitmap.avm2_bitmap_class() {
@@ -94,7 +94,7 @@ pub fn init<'gc>(
             };
 
             this.set_public_property("bitmapData", bd_object.into(), activation)?;
-
+*/
             bitmap.set_smoothing(activation.context.gc_context, smoothing);
         } else {
             unreachable!();

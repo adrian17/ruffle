@@ -25,6 +25,7 @@ use swf::Twips;
 use swf::{BlendMode, Rectangle};
 
 /// A class instance allocator that allocates Stage objects for DisplayObjects.
+/// Note: this only gets called for AS-instantiated DOs, never for timeline-instantiated ones.
 pub fn display_object_allocator<'gc>(
     class: ClassObject<'gc>,
     activation: &mut Activation<'_, 'gc>,

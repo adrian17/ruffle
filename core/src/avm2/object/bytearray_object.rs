@@ -5,6 +5,7 @@ use crate::avm2::object::{ClassObject, Object, ObjectPtr, TObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
 use crate::avm2::Multiname;
+use crate::character::Character;
 use core::fmt;
 use gc_arena::{Collect, GcCell, MutationContext};
 use std::cell::{Ref, RefMut};
@@ -14,14 +15,30 @@ pub fn byte_array_allocator<'gc>(
     class: ClassObject<'gc>,
     activation: &mut Activation<'_, 'gc>,
 ) -> Result<Object<'gc>, Error<'gc>> {
+    let storage = if let Some((movie, id)) = activation
+        .context
+        .library
+        .avm2_class_registry()
+        .class_symbol(class)
+    {
+        if let Some(lib) = activation.context.library.library_for_movie(movie) {
+            if let Some(Character::BinaryData(binary_data)) = lib.character_by_id(id) {
+                ByteArrayStorage::from_vec(binary_data.as_ref().to_vec())
+            } else {
+                ByteArrayStorage::new() // todo error?
+            }
+        } else {
+            ByteArrayStorage::new() // todo error?
+        }
+    } else {
+        ByteArrayStorage::new()
+    };
+
     let base = ScriptObjectData::new(class);
 
     Ok(ByteArrayObject(GcCell::allocate(
         activation.context.gc_context,
-        ByteArrayObjectData {
-            base,
-            storage: ByteArrayStorage::new(),
-        },
+        ByteArrayObjectData { base, storage },
     ))
     .into())
 }

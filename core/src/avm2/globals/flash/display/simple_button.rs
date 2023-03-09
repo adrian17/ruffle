@@ -30,7 +30,9 @@ pub fn init<'gc>(
                 .unwrap_or(Value::Null)
                 .as_object()
                 .and_then(|o| o.as_display_object());
-            new_do.set_state_child(&mut activation.context, ButtonState::UP, up_state);
+            if up_state.is_some() {
+                new_do.set_state_child(&mut activation.context, ButtonState::UP, up_state);
+            }
 
             let over_state = args
                 .get(1)
@@ -38,7 +40,9 @@ pub fn init<'gc>(
                 .unwrap_or(Value::Null)
                 .as_object()
                 .and_then(|o| o.as_display_object());
-            new_do.set_state_child(&mut activation.context, ButtonState::OVER, over_state);
+            if over_state.is_some() {
+                new_do.set_state_child(&mut activation.context, ButtonState::OVER, over_state);
+            }
 
             let down_state = args
                 .get(2)
@@ -46,7 +50,9 @@ pub fn init<'gc>(
                 .unwrap_or(Value::Null)
                 .as_object()
                 .and_then(|o| o.as_display_object());
-            new_do.set_state_child(&mut activation.context, ButtonState::DOWN, down_state);
+            if down_state.is_some() {
+                new_do.set_state_child(&mut activation.context, ButtonState::DOWN, down_state);
+            }
 
             let hit_state = args
                 .get(3)
@@ -54,7 +60,9 @@ pub fn init<'gc>(
                 .unwrap_or(Value::Null)
                 .as_object()
                 .and_then(|o| o.as_display_object());
-            new_do.set_state_child(&mut activation.context, ButtonState::HIT_TEST, hit_state);
+            if hit_state.is_some() {
+                new_do.set_state_child(&mut activation.context, ButtonState::HIT_TEST, hit_state);
+            }
         } else {
             unreachable!();
         }
