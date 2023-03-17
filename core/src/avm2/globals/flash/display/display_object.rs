@@ -24,80 +24,13 @@ use std::str::FromStr;
 use swf::Twips;
 use swf::{BlendMode, Rectangle};
 
-/// A class instance allocator that allocates Stage objects for DisplayObjects.
-/// Note: this only gets called for AS-instantiated DOs, never for timeline-instantiated ones.
 pub fn display_object_allocator<'gc>(
     class: ClassObject<'gc>,
     activation: &mut Activation<'_, 'gc>,
 ) -> Result<Object<'gc>, Error<'gc>> {
-
-    panic!("This allocator should not be called!");
-
-    // Iterate the inheritance chain, starting from `this` and working backwards through `super`s
-    // This accounts for the cases where a super may be linked to symbol, but `this` may not be
-    let mut class_object = Some(class);
-    while let Some(class) = class_object {
-        if let Some((movie, symbol)) = activation
-            .context
-            .library
-            .avm2_class_registry()
-            .class_symbol(class)
-        {
-            let mut child = activation
-                .context
-                .library
-                .library_for_movie_mut(movie)
-                .instantiate_by_id(symbol, activation.context.gc_context)?;
-
-            let obj = StageObject::for_display_object(activation, child, class)?;
-            child.set_object2(activation.context.gc_context, obj.into());
-
-            // [NA] Should these run for everything? Previously it was only here
-            child.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
-            catchup_display_object_to_frame(&mut activation.context, child);
-
-            return Ok(obj.into());
-        }
-        class_object = class.superclass_object();
-    }
-
-    let mut display_object = {
-        let movie = activation.context.swf.clone();
-        let textfield = activation.avm2().classes().textfield;
-        let simplebutton = activation.avm2().classes().simplebutton;
-        let shape = activation.avm2().classes().shape;
-        let loader = activation.avm2().classes().loader;
-        let bitmap = activation.avm2().classes().bitmap;
-        if class.has_class_in_chain(textfield) {
-            // note: no clue why this must work like this
-            use std::sync::Arc;
-            use crate::tag_utils::SwfMovie;
-            let movie = Arc::new(SwfMovie::empty(activation.context.swf.version()));
-            EditText::new(&mut activation.context, movie, 0.0, 0.0, 100.0, 100.0).into()
-        } else if class == simplebutton {
-            let new_do = Avm2Button::empty_button(&mut activation.context);
-            // [NA] Buttons specifically need to PO'd
-            new_do.post_instantiation(&mut activation.context, None, Instantiator::Avm2, false);
-            new_do.into()
-        } else if class.has_class_in_chain(shape) {
-            Graphic::new_with_avm2(&mut activation.context).into()
-        } else if class.has_class_in_chain(loader) {
-            LoaderDisplay::new_with_avm2(
-                activation.context.gc_context,
-                activation.context.swf.clone(),
-            )
-            .into()
-        } else if class.has_class_in_chain(bitmap) {
-            let bitmap_data = GcCell::allocate(activation.context.gc_context, BitmapData::dummy());
-            Bitmap::new_with_bitmap_data(&mut activation.context, 0, bitmap_data, false).into()
-        } else {
-            let dobj = MovieClip::new(movie, activation.context.gc_context);
-            dobj.into()
-        }
-    };
-    let obj = StageObject::for_display_object(activation, display_object, class)?;
-    display_object.set_object2(activation.context.gc_context, obj.into());
-    Ok(obj.into())
+    // todo we want an Err here
+    // as a script can do `new DisplayObject()`
+    panic!("This allocator should not be called! {:?}", class);
 }
 
 /// Implements `flash.display.DisplayObject`'s native instance constructor.

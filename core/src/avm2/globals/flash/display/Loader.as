@@ -1,4 +1,6 @@
 package flash.display {
+
+	[Ruffle(InstanceAllocator)]
 	public class Loader extends DisplayObjectContainer {
 		import flash.display.LoaderInfo;
 		import flash.display.DisplayObject;

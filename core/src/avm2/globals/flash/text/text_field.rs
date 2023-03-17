@@ -21,6 +21,7 @@ pub fn text_field_allocator<'gc>(
     let textfield_cls = activation.avm2().classes().textfield;
 
     let mut class_object = Some(class);
+    let orig_class = class;
     while let Some(class) = class_object {
 
         if class == textfield_cls {
@@ -29,7 +30,7 @@ pub fn text_field_allocator<'gc>(
             // note: no clue why this must work like this
             let movie = Arc::new(SwfMovie::empty(activation.context.swf.version()));
             let mut display_object = EditText::new(&mut activation.context, movie, 0.0, 0.0, 100.0, 100.0).into();
-            let obj = StageObject::for_display_object(activation, display_object, class)?;
+            let obj = StageObject::for_display_object(activation, display_object, orig_class)?;
             display_object.set_object2(activation.context.gc_context, obj.into());
             return Ok(obj.into());
         }
@@ -46,7 +47,7 @@ pub fn text_field_allocator<'gc>(
                 .library_for_movie_mut(movie)
                 .instantiate_by_id(symbol, activation.context.gc_context)?;
 
-            let obj = StageObject::for_display_object(activation, child, class)?;
+            let obj = StageObject::for_display_object(activation, child, orig_class)?;
             child.set_object2(activation.context.gc_context, obj.into());
 
             // [NA] Should these run for everything?

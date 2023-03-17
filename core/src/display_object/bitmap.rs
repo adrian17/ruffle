@@ -261,22 +261,7 @@ impl<'gc> TDisplayObject<'gc> for Bitmap<'gc> {
     ) {
         if context.is_action_script_3() {
             let mut activation = Avm2Activation::from_nothing(context.reborrow());
-            if instantiated_by.is_avm() {
-                let bitmapdata_cls = activation.context.avm2.classes().bitmapdata;
-
-                // copy the data, so we don't share mutations
-
-                let bitmap_data = GcCell::allocate(activation.context.gc_context, crate::bitmap::bitmap_data::BitmapData::default());
-                use crate::avm2::globals::flash::display::bitmap_data::fill_bitmap_data_from_symbol;
-                fill_bitmap_data_from_symbol(&mut activation, &self, bitmap_data);
-                let bitmap_data_obj = Avm2BitmapDataObject::from_bitmap_data(
-                    &mut activation,
-                    bitmap_data,
-                    bitmapdata_cls
-                ).expect("can't throw from post_instantiation -_-");
-
-                self.set_bitmap_data(&mut activation.context, bitmap_data);
-            } else {
+            if !instantiated_by.is_avm() {
                 let bitmap_cls = self.avm2_bitmap_class().unwrap_or_else(|| activation.context.avm2.classes().bitmap);
                 let bitmapdata_cls = self.avm2_bitmapdata_class().unwrap_or_else(|| activation.context.avm2.classes().bitmapdata);
 

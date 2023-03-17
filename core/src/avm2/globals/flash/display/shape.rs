@@ -18,11 +18,12 @@ pub fn shape_allocator<'gc>(
     let shape_cls = activation.avm2().classes().shape;
 
     let mut class_object = Some(class);
+    let orig_class = class;
     while let Some(class) = class_object {
 
         if class == shape_cls {
             let mut display_object = Graphic::new_with_avm2(&mut activation.context).into();
-            let obj = StageObject::for_display_object(activation, display_object, class)?;
+            let obj = StageObject::for_display_object(activation, display_object, orig_class)?;
             display_object.set_object2(activation.context.gc_context, obj.into());
             return Ok(obj.into());
         }
@@ -39,7 +40,7 @@ pub fn shape_allocator<'gc>(
                 .library_for_movie_mut(movie)
                 .instantiate_by_id(symbol, activation.context.gc_context)?;
 
-            let obj = StageObject::for_display_object(activation, child, class)?;
+            let obj = StageObject::for_display_object(activation, child, orig_class)?;
             child.set_object2(activation.context.gc_context, obj.into());
 
             // [NA] Should these run for everything?
@@ -50,7 +51,7 @@ pub fn shape_allocator<'gc>(
         }
         class_object = class.superclass_object();
     }
-    unreachable!("A SimpleButton subclass should have SimpleButton in superclass chain");
+    unreachable!("A Shape subclass should have Shape in superclass chain");
 }
 
 /// Implements `flash.display.Shape`'s 'init' method, which is called from the constructor

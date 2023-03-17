@@ -3,6 +3,7 @@ package flash.display {
     import flash.geom.Rectangle;
     import flash.media.SoundTransform;
 
+    [Ruffle(InstanceAllocator)]
     public class Sprite extends DisplayObjectContainer {
 
         internal var _graphics:Graphics;
