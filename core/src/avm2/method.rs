@@ -4,6 +4,7 @@ use crate::avm2::activation::Activation;
 use crate::avm2::object::{ClassObject, Object};
 use crate::avm2::script::TranslationUnit;
 use crate::avm2::value::{abc_default_value, Value};
+use crate::avm2::verify::VerifiedMethodInfo;
 use crate::avm2::Error;
 use crate::avm2::Multiname;
 use crate::string::AvmString;
@@ -11,6 +12,7 @@ use crate::tag_utils::SwfMovie;
 use gc_arena::barrier::unlock;
 use gc_arena::lock::Lock;
 use gc_arena::{Collect, Gc, Mutation};
+use std::cell::RefCell;
 use std::fmt;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -102,7 +104,7 @@ impl<'gc> ParamConfig<'gc> {
 }
 
 /// Represents a reference to an AVM2 method and body.
-#[derive(Collect, Clone)]
+#[derive(Collect)]
 #[collect(no_drop)]
 pub struct BytecodeMethod<'gc> {
     /// The translation unit this function was defined in.
@@ -117,6 +119,9 @@ pub struct BytecodeMethod<'gc> {
 
     /// The ABC method body this function uses.
     pub abc_method_body: Option<u32>,
+
+    #[collect(require_static)]
+    pub verified_info: RefCell<Option<VerifiedMethodInfo>>,
 
     /// The parameter signature of this method.
     pub signature: Vec<ParamConfig<'gc>>,
@@ -165,6 +170,7 @@ impl<'gc> BytecodeMethod<'gc> {
                         abc: txunit.abc(),
                         abc_method: abc_method.0,
                         abc_method_body: Some(index as u32),
+                        verified_info: RefCell::new(None),
                         signature,
                         return_type,
                         is_function,
@@ -179,6 +185,7 @@ impl<'gc> BytecodeMethod<'gc> {
             abc: txunit.abc(),
             abc_method: abc_method.0,
             abc_method_body: None,
+            verified_info: RefCell::new(None),
             signature,
             return_type,
             is_function,
@@ -215,6 +222,16 @@ impl<'gc> BytecodeMethod<'gc> {
         } else {
             None
         }
+    }
+
+    #[inline(never)]
+    pub fn verify(&self, activation: &mut Activation<'_, 'gc>) -> Result<(), Error<'gc>> {
+        // TODO: avmplus seems to eaglerly verify some methods
+
+        *self.verified_info.borrow_mut() =
+            Some(crate::avm2::verify::verify_method(activation, self)?);
+
+        Ok(())
     }
 
     /// Get the list of method params for this method.
