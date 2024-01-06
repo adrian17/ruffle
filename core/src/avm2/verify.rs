@@ -246,7 +246,12 @@ pub fn verify_method<'gc>(
         verified_code.push(resolved_op);
     }
 
-    optimize(activation, method, &mut verified_code, potential_jump_targets);
+    optimize(
+        activation,
+        method,
+        &mut verified_code,
+        potential_jump_targets,
+    );
 
     Ok(VerifiedMethodInfo {
         parsed_code: verified_code,
@@ -469,10 +474,14 @@ fn verify_code_starting_from<'gc>(
                 }
             }
 
-            AbcOp::AsType { type_name: name_index } | AbcOp::Coerce { index: name_index } => {
+            AbcOp::AsType {
+                type_name: name_index,
+            }
+            | AbcOp::Coerce { index: name_index } => {
                 let multiname = method
                     .translation_unit()
-                    .pool_maybe_uninitialized_multiname(*name_index, &mut activation.context).unwrap();
+                    .pool_maybe_uninitialized_multiname(*name_index, &mut activation.context)
+                    .unwrap();
 
                 activation
                     .domain()
@@ -482,7 +491,10 @@ fn verify_code_starting_from<'gc>(
                         Error::AvmError(
                             verify_error(
                                 activation,
-                                &format!("Error #1014: Class {} could not be found.", multiname.to_qualified_name(activation.context.gc_context)),
+                                &format!(
+                                    "Error #1014: Class {} could not be found.",
+                                    multiname.to_qualified_name(activation.context.gc_context)
+                                ),
                                 1014,
                             )
                             .expect("Error should construct"),
@@ -507,8 +519,12 @@ fn optimize<'gc>(
     activation: &mut Activation<'_, 'gc>,
     method: &BytecodeMethod<'gc>,
     code: &mut Vec<Op>,
-    jump_targets: HashSet<i32>
+    jump_targets: HashSet<i32>,
 ) {
+    // These make the code less readable
+    #![allow(clippy::manual_filter)]
+    #![allow(clippy::single_match)]
+
     // This can probably be done better by recording the receiver in `Activation`,
     // but this works since it's guaranteed to be set in `Activation::from_method`.
     let this_value = activation.local_register(0);
@@ -530,12 +546,20 @@ fn optimize<'gc>(
     // Invalidate local types if they should be invalidated
     for op in &*code {
         match op {
-            Op::SetLocal { index } | Op::Kill { index } | Op::IncLocal { index } | Op::IncLocalI { index } | Op::DecLocal { index } | Op::DecLocalI { index } => {
+            Op::SetLocal { index }
+            | Op::Kill { index }
+            | Op::IncLocal { index }
+            | Op::IncLocalI { index }
+            | Op::DecLocal { index }
+            | Op::DecLocalI { index } => {
                 if (*index as usize) < local_types.len() {
                     local_types[*index as usize] = None;
                 }
             }
-            Op::HasNext2 { object_register, index_register } => {
+            Op::HasNext2 {
+                object_register,
+                index_register,
+            } => {
                 if (*object_register as usize) < local_types.len() {
                     local_types[*object_register as usize] = None;
                 }
@@ -623,7 +647,6 @@ fn optimize<'gc>(
                             }
                         }
                         Op::PushInt { value } => {
-                            let value = value as i32;
                             if value >= 0 && value < (1 << 28) {
                                 previous_op = Some(op.clone());
                                 *op = Op::Nop;
@@ -638,18 +661,26 @@ fn optimize<'gc>(
                             if let Some(class) = class {
                                 let multiname = method
                                     .translation_unit()
-                                    .pool_maybe_uninitialized_multiname(*name_index, &mut activation.context).unwrap();
+                                    .pool_maybe_uninitialized_multiname(
+                                        *name_index,
+                                        &mut activation.context,
+                                    )
+                                    .unwrap();
 
                                 if !multiname.has_lazy_component() {
                                     match class.instance_vtable().get_trait(&multiname) {
-                                        Some(Property::Slot { slot_id }) | Some(Property::ConstSlot { slot_id }) => {
+                                        Some(Property::Slot { slot_id })
+                                        | Some(Property::ConstSlot { slot_id }) => {
                                             previous_op = Some(op.clone());
                                             *op = Op::GetSlot { index: slot_id };
                                             continue;
-                                        },
+                                        }
                                         Some(Property::Virtual { get: Some(get), .. }) => {
                                             previous_op = Some(op.clone());
-                                            *op = Op::CallMethod { num_args: 0, index: Index::new(get) };
+                                            *op = Op::CallMethod {
+                                                num_args: 0,
+                                                index: Index::new(get),
+                                            };
                                             continue;
                                         }
                                         _ => {}
@@ -659,10 +690,16 @@ fn optimize<'gc>(
                         }
                         _ => {}
                     },
-                    Op::AsType { type_name: name_index } => {
+                    Op::AsType {
+                        type_name: name_index,
+                    } => {
                         let multiname = method
                             .translation_unit()
-                            .pool_maybe_uninitialized_multiname(*name_index, &mut activation.context).unwrap();
+                            .pool_maybe_uninitialized_multiname(
+                                *name_index,
+                                &mut activation.context,
+                            )
+                            .unwrap();
 
                         let resolved_type = activation
                             .domain()
@@ -683,7 +720,11 @@ fn optimize<'gc>(
                     Op::Coerce { index: name_index } => {
                         let multiname = method
                             .translation_unit()
-                            .pool_maybe_uninitialized_multiname(*name_index, &mut activation.context).unwrap();
+                            .pool_maybe_uninitialized_multiname(
+                                *name_index,
+                                &mut activation.context,
+                            )
+                            .unwrap();
 
                         let resolved_type = activation
                             .domain()
@@ -704,7 +745,11 @@ fn optimize<'gc>(
                                         activation.avm2().classes().number.inner_class_definition(),
                                     ) && !GcCell::ptr_eq(
                                         class,
-                                        activation.avm2().classes().boolean.inner_class_definition(),
+                                        activation
+                                            .avm2()
+                                            .classes()
+                                            .boolean
+                                            .inner_class_definition(),
                                     ) && !GcCell::ptr_eq(
                                         class,
                                         activation.avm2().classes().void.inner_class_definition(),
@@ -759,7 +804,7 @@ fn ops_can_throw_error(ops: &[AbcOp], start_idx: u32, end_idx: u32) -> bool {
         }
     }
 
-    return false;
+    false
 }
 
 fn pool_int<'gc>(
