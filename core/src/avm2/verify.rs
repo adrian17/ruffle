@@ -827,7 +827,7 @@ fn resolve_op<'gc>(
         AbcOp::NewClass { index } => Op::NewClass { index },
         AbcOp::ApplyType { num_types } => Op::ApplyType { num_types },
         AbcOp::NewArray { num_args } => Op::NewArray { num_args },
-        AbcOp::CoerceA => Op::CoerceA,
+        AbcOp::CoerceA => Op::Nop,
         AbcOp::CoerceO => Op::CoerceO,
         AbcOp::CoerceS => Op::CoerceS,
         AbcOp::CoerceB | AbcOp::ConvertB => Op::CoerceB,
@@ -900,7 +900,7 @@ fn resolve_op<'gc>(
         AbcOp::AsType { type_name } => Op::AsType { type_name },
         AbcOp::AsTypeLate => Op::AsTypeLate,
         AbcOp::InstanceOf => Op::InstanceOf,
-        AbcOp::Label => Op::Label,
+        AbcOp::Label => Op::Nop,
         AbcOp::Debug {
             is_local_register,
             register_name,

@@ -54,7 +54,6 @@ pub enum Op {
     Coerce {
         index: Index<Multiname>,
     },
-    CoerceA,
     CoerceB,
     CoerceD,
     CoerceI,
@@ -213,7 +212,6 @@ pub enum Op {
     Kill {
         index: u32,
     },
-    Label,
     LessEquals,
     LessThan,
     Lf32,
