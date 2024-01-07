@@ -278,10 +278,10 @@ fn adjust_jump_offset<'gc>(
         .copied()
         .ok_or_else(|| {
             Error::AvmError(verify_error(
-            activation,
-            "Error #1021: At least one branch target was not on a valid instruction in the method.",
-            1021,
-        ).expect("Error should construct"))
+                activation,
+                "Error #1021: At least one branch target was not on a valid instruction in the method.",
+                1021,
+            ).expect("Error should construct"))
         })?;
 
     Ok(new_idx - 1)
