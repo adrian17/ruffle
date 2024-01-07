@@ -305,7 +305,7 @@ fn verify_code_starting_from<'gc>(
     worklist.push(start_idx);
 
     while !worklist.is_empty() {
-        let mut finished_without_new_push = true;
+        let mut save_current_work = false;
         let mut i = *worklist.last().unwrap();
         loop {
             if (i as usize) >= ops.len() {
@@ -359,7 +359,7 @@ fn verify_code_starting_from<'gc>(
 
                             verified_blocks.push(op_idx + 1);
 
-                            finished_without_new_push = false;
+                            save_current_work = true;
                             break;
                         } else if matches!(op, AbcOp::Jump { .. }) {
                             // The target of the jump has already been verified, and
@@ -515,7 +515,7 @@ fn verify_code_starting_from<'gc>(
             i += 1;
         }
 
-        if finished_without_new_push {
+        if !save_current_work {
             worklist.pop();
         }
     }
