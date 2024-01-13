@@ -502,7 +502,6 @@ fn verify_code_starting_from<'gc>(
                     activation
                         .domain()
                         .get_class(&multiname, activation.context.gc_context)
-                        .unwrap()
                         .ok_or_else(|| {
                             Error::AvmError(
                                 verify_error(
@@ -729,7 +728,6 @@ fn optimize<'gc>(
                             activation
                                 .domain()
                                 .get_class(&multiname, activation.context.gc_context)
-                                .unwrap()
                         } else {
                             None
                         };
@@ -757,7 +755,6 @@ fn optimize<'gc>(
                             activation
                                 .domain()
                                 .get_class(&multiname, activation.context.gc_context)
-                                .unwrap()
                         } else {
                             None
                         };
