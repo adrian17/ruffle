@@ -261,6 +261,20 @@ pub fn make_error_1089<'gc>(activation: &mut Activation<'_, 'gc>) -> Error<'gc> 
 
 #[inline(never)]
 #[cold]
+pub fn make_error_1107<'gc>(activation: &mut Activation<'_, 'gc>) -> Error<'gc> {
+    let err = verify_error(
+        activation,
+        "Error #1107: The ABC data is corrupt, attempt to read out of bounds.",
+        1107,
+    );
+    match err {
+        Ok(err) => Error::AvmError(err),
+        Err(err) => err,
+    }
+}
+
+#[inline(never)]
+#[cold]
 pub fn make_error_1117<'gc>(
     activation: &mut Activation<'_, 'gc>,
     name: AvmString<'gc>,
@@ -271,20 +285,6 @@ pub fn make_error_1117<'gc>(
         1117,
     );
 
-    match err {
-        Ok(err) => Error::AvmError(err),
-        Err(err) => err,
-    }
-}
-
-#[inline(never)]
-#[cold]
-pub fn make_error_1107<'gc>(activation: &mut Activation<'_, 'gc>) -> Error<'gc> {
-    let err = verify_error(
-        activation,
-        "Error #1107: The ABC data is corrupt, attempt to read out of bounds.",
-        1107,
-    );
     match err {
         Ok(err) => Error::AvmError(err),
         Err(err) => err,
