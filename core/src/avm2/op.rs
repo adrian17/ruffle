@@ -54,6 +54,7 @@ pub enum Op {
     Coerce {
         index: Index<Multiname>,
     },
+    CoerceA,
     CoerceB,
     CoerceD,
     CoerceI,

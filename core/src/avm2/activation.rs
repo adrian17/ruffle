@@ -1184,6 +1184,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 .last()
                 .cloned()
                 .unwrap_or(Value::Undefined),
+                // note: assuming bytecode is verified, this unwrap_or should never get hit.
         );
 
         Ok(FrameControl::Continue)
