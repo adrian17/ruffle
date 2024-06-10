@@ -391,6 +391,49 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(arguments_list)
     }
 
+    pub fn resolve_parameters_for_bytecode(
+        &mut self,
+        method: Method<'gc>,
+        user_arguments: &[Value<'gc>],
+        signature: &[ResolvedParamConfig<'gc>],
+        callee: Option<Object<'gc>>,
+    ) -> Result<(), Error<'gc>> {
+        let mut i: u32 = 1;
+        for (arg, param_config) in user_arguments.iter().zip(signature.iter()) {
+            let param = self.resolve_parameter(
+                method,
+                Some(arg),
+                param_config,
+                user_arguments,
+                callee,
+            )?;
+            *self.local_registers.get_unchecked_mut(i) = param;
+            i += 1;
+        }
+
+        match user_arguments.len().cmp(&signature.len()) {
+            // variadic parameters don't land in args
+            Ordering::Greater => {},
+            Ordering::Less => {
+                //Apply remaining default parameters
+                for param_config in signature[user_arguments.len()..].iter() {
+                    let param = self.resolve_parameter(
+                        method,
+                        None,
+                        param_config,
+                        user_arguments,
+                        callee,
+                    )?;
+                    *self.local_registers.get_unchecked_mut(i) = param;
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     /// Construct an activation for the execution of a particular bytecode
     /// method.
     /// NOTE: this is intended to be used immediately after from_nothing(),
@@ -460,24 +503,22 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             )?));
         }
 
-        // Statically verify all non-variadic, provided parameters.
-        let arguments_list = self.resolve_parameters(
+        self.resolve_parameters_for_bytecode(
             Method::Bytecode(method),
             user_arguments,
             signature,
             Some(callee),
         )?;
 
-        {
-            for (i, arg) in arguments_list[0..min(signature.len(), arguments_list.len())]
-                .iter()
-                .enumerate()
-            {
-                *self.local_registers.get_unchecked_mut(1 + i as u32) = *arg;
-            }
-        }
-
         if has_rest_or_args {
+
+            let arguments_list = self.resolve_parameters(
+                Method::Bytecode(method),
+                user_arguments,
+                signature,
+                Some(callee),
+            )?;
+
             let args_array = if method
                 .method()
                 .flags
