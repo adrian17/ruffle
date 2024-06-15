@@ -106,7 +106,12 @@ pub struct Avm2<'gc> {
     pub player_runtime: PlayerRuntime,
 
     /// Values currently present on the operand stack.
+    /// The stack is preallocated. TODO: replace by `Box<[Value]>`?
     stack: Vec<Value<'gc>>,
+
+    /// "Pointer" at one-past-the-end element of the stack.
+    /// Equivalent to stack's length.
+    stacki: usize,
 
     /// Scopes currently present of the scope stack.
     scope_stack: Vec<Scope<'gc>>,
@@ -214,7 +219,8 @@ impl<'gc> Avm2<'gc> {
         Self {
             player_version,
             player_runtime,
-            stack: Vec::new(),
+            stack: vec![Value::Undefined; 20000],
+            stacki: 0,
             scope_stack: Vec::new(),
             call_stack: GcCell::new(context.gc_context, CallStack::new()),
             playerglobals_domain,
@@ -649,7 +655,7 @@ impl<'gc> Avm2<'gc> {
     /// Push a value onto the operand stack.
     #[inline(always)]
     fn push(&mut self, value: impl Into<Value<'gc>>, depth: usize, max: usize) {
-        if self.stack.len() - depth > max {
+        if self.stacki - depth > max {
             self.stack_overflow();
             return;
         }
@@ -663,8 +669,9 @@ impl<'gc> Avm2<'gc> {
             }
         }
 
-        avm_debug!(self, "Stack push {}: {value:?}", self.stack.len());
-        self.stack.push(value);
+        avm_debug!(self, "Stack push {}: {value:?}", self.stacki);
+        self.stack[self.stacki] = value;
+        self.stacki += 1;
     }
 
     /// Push a value onto the operand stack.
@@ -673,8 +680,9 @@ impl<'gc> Avm2<'gc> {
     #[inline(always)]
     fn push_raw(&mut self, value: impl Into<Value<'gc>>) {
         let value = value.into();
-        avm_debug!(self, "Stack push {}: {value:?}", self.stack.len());
-        self.stack.push(value);
+        avm_debug!(self, "Stack push {}: {value:?}", self.stacki);
+        self.stack[self.stacki] = value;
+        self.stacki += 1;
     }
 
     /// Retrieve the top-most value on the operand stack.
@@ -686,14 +694,16 @@ impl<'gc> Avm2<'gc> {
             tracing::warn!("Avm2::pop: Stack underflow");
         }
 
-        let value = if self.stack.len() <= depth {
+        let value = if self.stacki <= depth {
+            panic!();
             stack_underflow();
             Value::Undefined
         } else {
-            self.stack.pop().unwrap_or(Value::Undefined)
+            self.stacki -= 1;
+            self.stack[self.stacki]
         };
 
-        avm_debug!(self, "Stack pop {}: {value:?}", self.stack.len());
+        avm_debug!(self, "Stack pop {}: {value:?}", self.stacki);
 
         value
     }
@@ -709,14 +719,14 @@ impl<'gc> Avm2<'gc> {
 
         let value = self
             .stack
-            .get(self.stack.len() - index - 1)
+            .get(self.stacki - index - 1)
             .copied()
             .unwrap_or_else(|| {
                 stack_underflow();
                 Value::Undefined
             });
 
-        avm_debug!(self, "Stack peek {}: {value:?}", self.stack.len());
+        avm_debug!(self, "Stack peek {}: {value:?}", self.stacki);
 
         value
     }

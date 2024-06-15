@@ -172,7 +172,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             caller_movie: None,
             subclass_object: None,
             activation_class: None,
-            stack_depth: context.avm2.stack.len(),
+            stack_depth: context.avm2.stacki,
             scope_depth: context.avm2.scope_stack.len(),
             max_stack_size: 0,
             max_scope_size: 0,
@@ -201,7 +201,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             caller_movie: None,
             subclass_object: None,
             activation_class: None,
-            stack_depth: context.avm2.stack.len(),
+            stack_depth: context.avm2.stacki,
             scope_depth: context.avm2.scope_stack.len(),
             max_stack_size: 0,
             max_scope_size: 0,
@@ -266,7 +266,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             caller_movie: script.translation_unit().map(|t| t.movie()),
             subclass_object: None,
             activation_class,
-            stack_depth: context.avm2.stack.len(),
+            stack_depth: context.avm2.stacki,
             scope_depth: context.avm2.scope_stack.len(),
             max_stack_size: max_stack as usize,
             max_scope_size: max_scope as usize,
@@ -438,7 +438,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         self.caller_movie = Some(method.owner_movie());
         self.subclass_object = subclass_object;
         self.activation_class = activation_class;
-        self.stack_depth = self.context.avm2.stack.len();
+        self.stack_depth = self.context.avm2.stacki;
         self.scope_depth = self.context.avm2.scope_stack.len();
         self.max_stack_size = body.max_stack as usize;
         self.max_scope_size = (body.max_scope_depth - body.init_scope_depth) as usize;
@@ -542,7 +542,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             caller_movie,
             subclass_object,
             activation_class: None,
-            stack_depth: context.avm2.stack.len(),
+            stack_depth: context.avm2.stacki,
             scope_depth: context.avm2.scope_stack.len(),
             max_stack_size: 0,
             max_scope_size: 0,
@@ -701,7 +701,8 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     #[inline]
     pub fn clear_stack(&mut self) {
         let stack_depth = self.stack_depth;
-        self.avm2().stack.truncate(stack_depth)
+        self.avm2().stacki = self.stack_depth;
+        //self.avm2().stack.truncate(stack_depth)
     }
 
     /// Clears the scope stack used by this activation.
@@ -1131,14 +1132,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     }
 
     fn op_dup(&mut self) -> Result<FrameControl<'gc>, Error<'gc>> {
-        self.push_stack(
-            self.context
-                .avm2
-                .stack
-                .last()
-                .cloned()
-                .unwrap_or(Value::Undefined),
-        );
+        self.push_stack(self.context.avm2.stack[self.context.avm2.stacki-1]);
 
         Ok(FrameControl::Continue)
     }
