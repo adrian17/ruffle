@@ -95,7 +95,7 @@ use num_traits::FromPrimitive;
 
 const BROADCAST_WHITELIST: [&str; 4] = ["enterFrame", "exitFrame", "frameConstructed", "render"];
 
-const PREALLOCATED_STACK_SIZE: usize = 4000;
+const PREALLOCATED_STACK_SIZE: usize = 120000;
 
 /// The state of an AVM2 interpreter.
 #[derive(Collect)]
@@ -110,7 +110,6 @@ pub struct Avm2<'gc> {
 
     /// Values currently present on the operand stack.
     stack: Vec<Value<'gc>>,
-    stack_i: usize,
 
     /// Scopes currently present of the scope stack.
     scope_stack: Vec<Scope<'gc>>,
@@ -221,8 +220,7 @@ impl<'gc> Avm2<'gc> {
         Self {
             player_version,
             player_runtime,
-            stack: vec![Value::Undefined; PREALLOCATED_STACK_SIZE],
-            stack_i: 0,
+            stack: Vec::with_capacity(PREALLOCATED_STACK_SIZE),
             scope_stack: Vec::new(),
             call_stack: GcRefLock::new(context.gc_context, CallStack::new().into()),
             playerglobals_domain,
@@ -678,6 +676,20 @@ impl<'gc> Avm2<'gc> {
         self.call_stack
     }
 
+    // See: https://doc.rust-lang.org/std/vec/struct.Vec.html#method.push_within_capacity
+    #[inline]
+    pub fn vec_push_within_capacity<T>(zelf: &mut Vec<T>, value: T) -> Result<(), T> {
+        if zelf.len() == zelf.capacity() {
+            return Err(value);
+        }
+        unsafe {
+            let end = zelf.as_mut_ptr().add(zelf.len());
+            std::ptr::write(end, value);
+            zelf.set_len(zelf.len()+1);
+        }
+        Ok(())
+    }
+
     /// Push a value onto the operand stack.
     #[inline(always)]
     fn push(&mut self, value: impl Into<Value<'gc>>) {
@@ -691,9 +703,10 @@ impl<'gc> Avm2<'gc> {
             }
         }
 
-        avm_debug!(self, "Stack push {}: {value:?}", self.stack_i + 1);
-        self.stack[self.stack_i] = value;
-        self.stack_i += 1;
+        avm_debug!(self, "Stack push {}: {value:?}", self.stack.len() + 1);
+        if let Err(_) = Self::vec_push_within_capacity(&mut self.stack, value) {
+            panic!("Native stack overflow");
+        }
     }
 
     /// Push a value onto the operand stack.
@@ -701,18 +714,18 @@ impl<'gc> Avm2<'gc> {
     #[inline(always)]
     fn push_raw(&mut self, value: impl Into<Value<'gc>>) {
         let value = value.into();
-        avm_debug!(self, "Stack push {}: {value:?}", self.stack_i + 1);
-        self.stack[self.stack_i] = value;
-        self.stack_i += 1;
+        avm_debug!(self, "Stack push {}: {value:?}", self.stack.len() + 1);
+        if let Err(_) = Self::vec_push_within_capacity(&mut self.stack, value) {
+            panic!("Native stack overflow");
+        }
     }
 
     /// Retrieve the top-most value on the operand stack.
     #[inline(always)]
     fn pop(&mut self) -> Value<'gc> {
-        self.stack_i -= 1;
-        let value = self.stack[self.stack_i];
+        let value = self.stack.pop().expect("Native stack underflow");
 
-        avm_debug!(self, "Stack pop {}: {value:?}", self.stack_i);
+        avm_debug!(self, "Stack pop {}: {value:?}", self.stack.len());
 
         value
     }
@@ -720,9 +733,9 @@ impl<'gc> Avm2<'gc> {
     /// Peek the n-th value from the end of the operand stack.
     #[inline(always)]
     fn peek(&mut self, index: usize) -> Value<'gc> {
-        let value = self.stack[self.stack_i - index - 1];
+        let value = self.stack[self.stack.len() - index - 1];
 
-        avm_debug!(self, "Stack peek {}: {value:?}", self.stack_i);
+        avm_debug!(self, "Stack peek {}: {value:?}", self.stack.len());
 
         value
     }
@@ -735,8 +748,8 @@ impl<'gc> Avm2<'gc> {
         args
     }
 
-    fn set_stack_i(&mut self, stack_i: usize) {
-        self.stack_i = stack_i;
+    fn truncate_stack(&mut self, size: usize) {
+        self.stack.truncate(size);
     }
 
     fn push_scope(&mut self, scope: Scope<'gc>) {

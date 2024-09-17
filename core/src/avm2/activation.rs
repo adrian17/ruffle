@@ -167,7 +167,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             bound_superclass_object: None,
             bound_class: None,
             activation_class: None,
-            stack_depth: context.avm2.stack_i,
+            stack_depth: context.avm2.stack.len(),
             scope_depth: context.avm2.scope_stack.len(),
             context,
         }
@@ -195,7 +195,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             bound_superclass_object: None,
             bound_class: None,
             activation_class: None,
-            stack_depth: context.avm2.stack_i,
+            stack_depth: context.avm2.stack.len(),
             scope_depth: context.avm2.scope_stack.len(),
             context,
         }
@@ -256,7 +256,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             bound_superclass_object: Some(context.avm2.classes().object), // The script global class extends Object
             bound_class: Some(script.global_class()),
             activation_class,
-            stack_depth: context.avm2.stack_i,
+            stack_depth: context.avm2.stack.len(),
             scope_depth: context.avm2.scope_stack.len(),
             context,
         };
@@ -428,7 +428,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         self.bound_superclass_object = bound_superclass_object;
         self.bound_class = bound_class;
         self.activation_class = activation_class;
-        self.stack_depth = self.context.avm2.stack_i;
+        self.stack_depth = self.context.avm2.stack.len();
         self.scope_depth = self.context.avm2.scope_stack.len();
 
         // Everything is now setup for the verifier to run
@@ -669,7 +669,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     #[inline]
     pub fn clear_stack(&mut self) {
         let stack_depth = self.stack_depth;
-        self.avm2().set_stack_i(stack_depth);
+        self.avm2().truncate_stack(stack_depth);
     }
 
     /// Clears the scope stack used by this activation.
