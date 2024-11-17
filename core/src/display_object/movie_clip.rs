@@ -39,7 +39,11 @@ use crate::string::{AvmString, SwfStrExt as _, WStr, WString};
 use crate::tag_utils::{self, ControlFlow, DecodeResult, Error, SwfMovie, SwfSlice, SwfStream};
 use crate::vminterface::{AvmObject, Instantiator};
 use core::fmt;
-use gc_arena::{Collect, Gc, GcCell, GcWeakCell, Mutation};
+use gc_arena::barrier::unlock;
+use gc_arena::{
+    lock::Lock,
+    Collect, Gc, GcCell, GcWeakCell, Mutation,
+};
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cell::{Ref, RefCell, RefMut};
@@ -1352,7 +1356,9 @@ impl<'gc> MovieClip<'gc> {
     }
 
     pub fn set_avm2_class(self, gc_context: &Mutation<'gc>, constr: Option<Avm2ClassObject<'gc>>) {
-        *self.0.read().static_data.avm2_class.write(gc_context) = constr;
+        let static_data = self.0.read().static_data;
+        unlock!(Gc::write(gc_context, static_data), MovieClipStatic, avm2_class)
+            .set(constr);
     }
 
     pub fn frame_label_to_number(
@@ -2170,7 +2176,7 @@ impl<'gc> MovieClip<'gc> {
             .read()
             .static_data
             .avm2_class
-            .read()
+            .get()
             .unwrap_or_else(|| context.avm2.classes().movieclip);
 
         let mut constr_thing = || {
@@ -2202,7 +2208,7 @@ impl<'gc> MovieClip<'gc> {
             .read()
             .static_data
             .avm2_class
-            .read()
+            .get()
             .unwrap_or_else(|| context.avm2.classes().movieclip);
 
         if let Avm2Value::Object(object) = self.object2() {
@@ -3503,11 +3509,10 @@ impl<'gc> MovieClipData<'gc> {
         &self,
         context: &mut UpdateContext<'gc>,
     ) -> Option<Avm1Object<'gc>> {
-        let symbol_name = self.static_data.exported_name.read();
-        let symbol_name = symbol_name.as_ref()?;
+        let symbol_name = self.static_data.exported_name.get()?;
         let constructor = context
             .avm1
-            .get_registered_constructor(self.movie().version(), *symbol_name)?;
+            .get_registered_constructor(self.movie().version(), symbol_name)?;
         Some((*constructor).into())
     }
 
@@ -4250,12 +4255,10 @@ impl<'gc, 'a> MovieClipData<'gc> {
         // TODO: do other types of Character need to know their exported name?
         if let Some(character) = library.character_by_id(id) {
             if let Character::MovieClip(movie_clip) = character {
-                *movie_clip
-                    .0
-                    .read()
-                    .static_data
-                    .exported_name
-                    .write(context.gc_context) = Some(*name);
+                let static_data = movie_clip.0.read().static_data;
+
+                unlock!(Gc::write(context.gc_context, static_data), MovieClipStatic, exported_name)
+                    .set(Some(*name));
             } else {
                 // This is fairly common, don't log anything here
             }
@@ -4596,7 +4599,7 @@ impl<'gc, 'a> MovieClip<'gc> {
                             }
                             None => {
                                 // Most SWFs use id 0 here, but some obfuscated SWFs can use other invalid IDs.
-                                if self.0.read().static_data.avm2_class.read().is_none() {
+                                if self.0.read().static_data.avm2_class.get().is_none() {
                                     self.set_avm2_class(
                                         activation.context.gc_context,
                                         Some(class_object),
@@ -4874,8 +4877,8 @@ struct MovieClipStatic<'gc> {
     total_frames: FrameNumber,
     /// The last known symbol name under which this movie clip was exported.
     /// Used for looking up constructors registered with `Object.registerClass`.
-    exported_name: GcCell<'gc, Option<AvmString<'gc>>>,
-    avm2_class: GcCell<'gc, Option<Avm2ClassObject<'gc>>>,
+    exported_name: Lock<Option<AvmString<'gc>>>,
+    avm2_class: Lock<Option<Avm2ClassObject<'gc>>>,
     /// Only set if this MovieClip is the root movie in an SWF
     /// (either the root SWF initially loaded by the player,
     /// or an SWF dynamically loaded by `Loader`)
@@ -4928,8 +4931,8 @@ impl<'gc> MovieClipStatic<'gc> {
             scene_labels_map: HashMap::new(),
             audio_stream_info: None,
             audio_stream_handle: None,
-            exported_name: GcCell::new(gc_context, None),
-            avm2_class: GcCell::new(gc_context, None),
+            exported_name: Lock::new(None),
+            avm2_class: Lock::new(None),
             loader_info,
             preload_progress: GcCell::new(gc_context, Default::default()),
             abc_tags: GcCell::new(gc_context, Default::default()),
