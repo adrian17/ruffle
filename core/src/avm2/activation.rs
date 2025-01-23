@@ -729,6 +729,8 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             }
         };
 
+        self.cleanup();
+
         val
     }
 

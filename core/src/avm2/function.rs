@@ -251,8 +251,6 @@ pub fn exec<'gc>(
 
             let result = activation.run_actions(bm);
 
-            activation.cleanup();
-
             result
         }
     };
