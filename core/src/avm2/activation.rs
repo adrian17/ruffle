@@ -720,18 +720,11 @@ impl<'a, 'gc> Activation<'a, 'gc> {
 
         self.ip = 0;
 
-        let val = loop {
-            let result = self.do_next_opcode(method, verified_code);
-            match result {
-                Ok(FrameControl::Return(value)) => break Ok(value),
-                Ok(FrameControl::Continue) => {}
-                Err(e) => break Err(e),
-            }
-        };
+        let result = self.interpreter_loop(method, verified_code);
 
         self.cleanup();
 
-        val
+        result
     }
 
     /// If a local exception handler exists for the error, use it to handle
@@ -779,231 +772,239 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     }
 
     /// Run a single action from a given action reader.
-    #[inline(always)]
-    fn do_next_opcode(
+    fn interpreter_loop(
         &mut self,
         method: Gc<'gc, BytecodeMethod<'gc>>,
         opcodes: &[Op<'gc>],
-    ) -> Result<FrameControl<'gc>, Error<'gc>> {
-        self.actions_since_timeout_check += 1;
-        if self.actions_since_timeout_check >= 200000 {
-            self.actions_since_timeout_check = 0;
-            if self.context.update_start.elapsed() >= self.context.max_execution_duration {
-                return Err(
-                    "A script in this movie has taken too long to execute and has been terminated."
-                        .into(),
-                );
-            }
-        }
-
-        let op = &opcodes[self.ip as usize];
-        self.ip += 1;
-        avm_debug!(self.avm2(), "Opcode: {op:?}");
-
-        {
-            let result = match op {
-                Op::PushByte { value } => self.op_push_byte(*value),
-                Op::PushDouble { value } => self.op_push_double(*value),
-                Op::PushFalse => self.op_push_false(),
-                Op::PushInt { value } => self.op_push_int(*value),
-                Op::PushNamespace { value } => self.op_push_namespace(method, *value),
-                Op::PushNaN => self.op_push_nan(),
-                Op::PushNull => self.op_push_null(),
-                Op::PushShort { value } => self.op_push_short(*value),
-                Op::PushString { string } => self.op_push_string(*string),
-                Op::PushTrue => self.op_push_true(),
-                Op::PushUint { value } => self.op_push_uint(*value),
-                Op::PushUndefined => self.op_push_undefined(),
-                Op::Pop => self.op_pop(),
-                Op::Dup => self.op_dup(),
-                Op::GetLocal { index } => self.op_get_local(*index),
-                Op::SetLocal { index } => self.op_set_local(*index),
-                Op::Kill { index } => self.op_kill(*index),
-                Op::Call { num_args } => self.op_call(*num_args),
-                Op::CallMethod {
-                    index,
-                    num_args,
-                    push_return_value,
-                } => self.op_call_method(*index, *num_args, *push_return_value),
-                Op::CallProperty {
-                    multiname,
-                    num_args,
-                } => self.op_call_property(*multiname, *num_args),
-                Op::CallPropLex {
-                    multiname,
-                    num_args,
-                } => self.op_call_prop_lex(*multiname, *num_args),
-                Op::CallPropVoid {
-                    multiname,
-                    num_args,
-                } => self.op_call_prop_void(*multiname, *num_args),
-                Op::CallStatic { index, num_args } => {
-                    self.op_call_static(method, *index, *num_args)
+    ) -> Result<Value<'gc>, Error<'gc>> {
+        loop {
+            let frame_control = {
+                self.actions_since_timeout_check += 1;
+                if self.actions_since_timeout_check >= 200000 {
+                    self.actions_since_timeout_check = 0;
+                    if self.context.update_start.elapsed() >= self.context.max_execution_duration {
+                        return Err(
+                            "A script in this movie has taken too long to execute and has been terminated."
+                                .into(),
+                        );
+                    }
                 }
-                Op::CallSuper {
-                    multiname,
-                    num_args,
-                } => self.op_call_super(*multiname, *num_args),
-                Op::CallSuperVoid {
-                    multiname,
-                    num_args,
-                } => self.op_call_super_void(*multiname, *num_args),
-                Op::ReturnValue => self.op_return_value(method),
-                Op::ReturnValueNoCoerce => self.op_return_value_no_coerce(),
-                Op::ReturnVoid => self.op_return_void(),
-                Op::GetProperty { multiname } => self.op_get_property(*multiname),
-                Op::SetProperty { multiname } => self.op_set_property(*multiname),
-                Op::InitProperty { multiname } => self.op_init_property(*multiname),
-                Op::DeleteProperty { multiname } => self.op_delete_property(*multiname),
-                Op::GetSuper { multiname } => self.op_get_super(*multiname),
-                Op::SetSuper { multiname } => self.op_set_super(*multiname),
-                Op::In => self.op_in(),
-                Op::PushScope => self.op_push_scope(),
-                Op::NewCatch { index } => self.op_newcatch(method, *index),
-                Op::PushWith => self.op_push_with(),
-                Op::PopScope => self.op_pop_scope(),
-                Op::GetOuterScope { index } => self.op_get_outer_scope(*index),
-                Op::GetScopeObject { index } => self.op_get_scope_object(*index),
-                Op::GetGlobalScope => self.op_get_global_scope(),
-                Op::FindDef { multiname } => self.op_find_def(*multiname),
-                Op::FindProperty { multiname } => self.op_find_property(*multiname),
-                Op::FindPropStrict { multiname } => self.op_find_prop_strict(*multiname),
-                Op::GetScriptGlobals { script } => self.op_get_script_globals(*script),
-                Op::GetDescendants { multiname } => self.op_get_descendants(*multiname),
-                Op::GetSlot { index } => self.op_get_slot(*index),
-                Op::SetSlot { index } => self.op_set_slot(*index),
-                Op::SetSlotNoCoerce { index } => self.op_set_slot_no_coerce(*index),
-                Op::GetGlobalSlot { index } => self.op_get_global_slot(*index),
-                Op::SetGlobalSlot { index } => self.op_set_global_slot(*index),
-                Op::Construct { num_args } => self.op_construct(*num_args),
-                Op::ConstructProp {
-                    multiname,
-                    num_args,
-                } => self.op_construct_prop(*multiname, *num_args),
-                Op::ConstructSuper { num_args } => self.op_construct_super(*num_args),
-                Op::NewActivation => self.op_new_activation(),
-                Op::NewObject { num_args } => self.op_new_object(*num_args),
-                Op::NewFunction { index } => self.op_new_function(method, *index),
-                Op::NewClass { class } => self.op_new_class(*class),
-                Op::ApplyType { num_types } => self.op_apply_type(*num_types),
-                Op::NewArray { num_args } => self.op_new_array(*num_args),
-                Op::CoerceA => Ok(FrameControl::Continue),
-                Op::CoerceB => self.op_coerce_b(),
-                Op::CoerceD => self.op_coerce_d(),
-                Op::CoerceDSwapPop => self.op_coerce_d_swap_pop(),
-                Op::CoerceI => self.op_coerce_i(),
-                Op::CoerceISwapPop => self.op_coerce_i_swap_pop(),
-                Op::CoerceO => self.op_coerce_o(),
-                Op::CoerceS => self.op_coerce_s(),
-                Op::CoerceU => self.op_coerce_u(),
-                Op::CoerceUSwapPop => self.op_coerce_u_swap_pop(),
-                Op::ConvertO => self.op_convert_o(),
-                Op::ConvertS => self.op_convert_s(),
-                Op::Add => self.op_add(),
-                Op::AddI => self.op_add_i(),
-                Op::BitAnd => self.op_bitand(),
-                Op::BitNot => self.op_bitnot(),
-                Op::BitOr => self.op_bitor(),
-                Op::BitXor => self.op_bitxor(),
-                Op::DecLocal { index } => self.op_declocal(*index),
-                Op::DecLocalI { index } => self.op_declocal_i(*index),
-                Op::Decrement => self.op_decrement(),
-                Op::DecrementI => self.op_decrement_i(),
-                Op::Divide => self.op_divide(),
-                Op::IncLocal { index } => self.op_inclocal(*index),
-                Op::IncLocalI { index } => self.op_inclocal_i(*index),
-                Op::Increment => self.op_increment(),
-                Op::IncrementI => self.op_increment_i(),
-                Op::LShift => self.op_lshift(),
-                Op::Modulo => self.op_modulo(),
-                Op::Multiply => self.op_multiply(),
-                Op::MultiplyI => self.op_multiply_i(),
-                Op::Negate => self.op_negate(),
-                Op::NegateI => self.op_negate_i(),
-                Op::RShift => self.op_rshift(),
-                Op::Subtract => self.op_subtract(),
-                Op::SubtractI => self.op_subtract_i(),
-                Op::Swap => self.op_swap(),
-                Op::URShift => self.op_urshift(),
-                Op::Jump { offset } => self.op_jump(*offset),
-                Op::IfTrue { offset } => self.op_if_true(*offset),
-                Op::IfFalse { offset } => self.op_if_false(*offset),
-                Op::IfStrictEq { offset } => self.op_if_strict_eq(*offset),
-                Op::IfStrictNe { offset } => self.op_if_strict_ne(*offset),
-                Op::IfEq { offset } => self.op_if_eq(*offset),
-                Op::IfNe { offset } => self.op_if_ne(*offset),
-                Op::IfGe { offset } => self.op_if_ge(*offset),
-                Op::IfGt { offset } => self.op_if_gt(*offset),
-                Op::IfLe { offset } => self.op_if_le(*offset),
-                Op::IfLt { offset } => self.op_if_lt(*offset),
-                Op::IfNge { offset } => self.op_if_nge(*offset),
-                Op::IfNgt { offset } => self.op_if_ngt(*offset),
-                Op::IfNle { offset } => self.op_if_nle(*offset),
-                Op::IfNlt { offset } => self.op_if_nlt(*offset),
-                Op::StrictEquals => self.op_strict_equals(),
-                Op::Equals => self.op_equals(),
-                Op::GreaterEquals => self.op_greater_equals(),
-                Op::GreaterThan => self.op_greater_than(),
-                Op::LessEquals => self.op_less_equals(),
-                Op::LessThan => self.op_less_than(),
-                Op::Nop => Ok(FrameControl::Continue),
-                Op::Not => self.op_not(),
-                Op::HasNext => self.op_has_next(),
-                Op::HasNext2 {
-                    object_register,
-                    index_register,
-                } => self.op_has_next_2(*object_register, *index_register),
-                Op::NextName => self.op_next_name(),
-                Op::NextValue => self.op_next_value(),
-                Op::IsType { class } => self.op_is_type(*class),
-                Op::IsTypeLate => self.op_is_type_late(),
-                Op::AsType { class } => self.op_as_type(*class),
-                Op::AsTypeLate => self.op_as_type_late(),
-                Op::InstanceOf => self.op_instance_of(),
-                Op::Debug {
-                    is_local_register,
-                    register_name,
-                    register,
-                } => self.op_debug(*is_local_register, *register_name, *register),
-                Op::DebugFile { file_name } => self.op_debug_file(*file_name),
-                Op::DebugLine { line_num } => self.op_debug_line(*line_num),
-                Op::Bkpt => self.op_bkpt(),
-                Op::BkptLine { line_num } => self.op_bkpt_line(*line_num),
-                Op::Timestamp => self.op_timestamp(),
-                Op::TypeOf => self.op_type_of(),
-                Op::EscXAttr => self.op_esc_xattr(),
-                Op::EscXElem => self.op_esc_elem(),
-                Op::LookupSwitch(ref lookup_switch) => {
-                    self.op_lookup_switch(lookup_switch.default_offset, &lookup_switch.case_offsets)
-                }
-                Op::Coerce { class } => self.op_coerce(*class),
-                Op::CoerceSwapPop { class } => self.op_coerce_swap_pop(*class),
-                Op::CheckFilter => self.op_check_filter(),
-                Op::Si8 => self.op_si8(),
-                Op::Si16 => self.op_si16(),
-                Op::Si32 => self.op_si32(),
-                Op::Sf32 => self.op_sf32(),
-                Op::Sf64 => self.op_sf64(),
-                Op::Li8 => self.op_li8(),
-                Op::Li16 => self.op_li16(),
-                Op::Li32 => self.op_li32(),
-                Op::Lf32 => self.op_lf32(),
-                Op::Lf64 => self.op_lf64(),
-                Op::Sxi1 => self.op_sxi1(),
-                Op::Sxi8 => self.op_sxi8(),
-                Op::Sxi16 => self.op_sxi16(),
-                Op::Throw => self.op_throw(),
-                _ => {
-                    tracing::info!("Encountered unimplemented AVM2 opcode {:?}", op);
 
-                    return Err("Unknown op".into());
+                let op = &opcodes[self.ip as usize];
+                self.ip += 1;
+                avm_debug!(self.avm2(), "Opcode: {op:?}");
+
+                {
+                    let result = match op {
+                        Op::PushByte { value } => self.op_push_byte(*value),
+                        Op::PushDouble { value } => self.op_push_double(*value),
+                        Op::PushFalse => self.op_push_false(),
+                        Op::PushInt { value } => self.op_push_int(*value),
+                        Op::PushNamespace { value } => self.op_push_namespace(method, *value),
+                        Op::PushNaN => self.op_push_nan(),
+                        Op::PushNull => self.op_push_null(),
+                        Op::PushShort { value } => self.op_push_short(*value),
+                        Op::PushString { string } => self.op_push_string(*string),
+                        Op::PushTrue => self.op_push_true(),
+                        Op::PushUint { value } => self.op_push_uint(*value),
+                        Op::PushUndefined => self.op_push_undefined(),
+                        Op::Pop => self.op_pop(),
+                        Op::Dup => self.op_dup(),
+                        Op::GetLocal { index } => self.op_get_local(*index),
+                        Op::SetLocal { index } => self.op_set_local(*index),
+                        Op::Kill { index } => self.op_kill(*index),
+                        Op::Call { num_args } => self.op_call(*num_args),
+                        Op::CallMethod {
+                            index,
+                            num_args,
+                            push_return_value,
+                        } => self.op_call_method(*index, *num_args, *push_return_value),
+                        Op::CallProperty {
+                            multiname,
+                            num_args,
+                        } => self.op_call_property(*multiname, *num_args),
+                        Op::CallPropLex {
+                            multiname,
+                            num_args,
+                        } => self.op_call_prop_lex(*multiname, *num_args),
+                        Op::CallPropVoid {
+                            multiname,
+                            num_args,
+                        } => self.op_call_prop_void(*multiname, *num_args),
+                        Op::CallStatic { index, num_args } => {
+                            self.op_call_static(method, *index, *num_args)
+                        }
+                        Op::CallSuper {
+                            multiname,
+                            num_args,
+                        } => self.op_call_super(*multiname, *num_args),
+                        Op::CallSuperVoid {
+                            multiname,
+                            num_args,
+                        } => self.op_call_super_void(*multiname, *num_args),
+                        Op::ReturnValue => self.op_return_value(method),
+                        Op::ReturnValueNoCoerce => self.op_return_value_no_coerce(),
+                        Op::ReturnVoid => self.op_return_void(),
+                        Op::GetProperty { multiname } => self.op_get_property(*multiname),
+                        Op::SetProperty { multiname } => self.op_set_property(*multiname),
+                        Op::InitProperty { multiname } => self.op_init_property(*multiname),
+                        Op::DeleteProperty { multiname } => self.op_delete_property(*multiname),
+                        Op::GetSuper { multiname } => self.op_get_super(*multiname),
+                        Op::SetSuper { multiname } => self.op_set_super(*multiname),
+                        Op::In => self.op_in(),
+                        Op::PushScope => self.op_push_scope(),
+                        Op::NewCatch { index } => self.op_newcatch(method, *index),
+                        Op::PushWith => self.op_push_with(),
+                        Op::PopScope => self.op_pop_scope(),
+                        Op::GetOuterScope { index } => self.op_get_outer_scope(*index),
+                        Op::GetScopeObject { index } => self.op_get_scope_object(*index),
+                        Op::GetGlobalScope => self.op_get_global_scope(),
+                        Op::FindDef { multiname } => self.op_find_def(*multiname),
+                        Op::FindProperty { multiname } => self.op_find_property(*multiname),
+                        Op::FindPropStrict { multiname } => self.op_find_prop_strict(*multiname),
+                        Op::GetScriptGlobals { script } => self.op_get_script_globals(*script),
+                        Op::GetDescendants { multiname } => self.op_get_descendants(*multiname),
+                        Op::GetSlot { index } => self.op_get_slot(*index),
+                        Op::SetSlot { index } => self.op_set_slot(*index),
+                        Op::SetSlotNoCoerce { index } => self.op_set_slot_no_coerce(*index),
+                        Op::GetGlobalSlot { index } => self.op_get_global_slot(*index),
+                        Op::SetGlobalSlot { index } => self.op_set_global_slot(*index),
+                        Op::Construct { num_args } => self.op_construct(*num_args),
+                        Op::ConstructProp {
+                            multiname,
+                            num_args,
+                        } => self.op_construct_prop(*multiname, *num_args),
+                        Op::ConstructSuper { num_args } => self.op_construct_super(*num_args),
+                        Op::NewActivation => self.op_new_activation(),
+                        Op::NewObject { num_args } => self.op_new_object(*num_args),
+                        Op::NewFunction { index } => self.op_new_function(method, *index),
+                        Op::NewClass { class } => self.op_new_class(*class),
+                        Op::ApplyType { num_types } => self.op_apply_type(*num_types),
+                        Op::NewArray { num_args } => self.op_new_array(*num_args),
+                        Op::CoerceA => Ok(FrameControl::Continue),
+                        Op::CoerceB => self.op_coerce_b(),
+                        Op::CoerceD => self.op_coerce_d(),
+                        Op::CoerceDSwapPop => self.op_coerce_d_swap_pop(),
+                        Op::CoerceI => self.op_coerce_i(),
+                        Op::CoerceISwapPop => self.op_coerce_i_swap_pop(),
+                        Op::CoerceO => self.op_coerce_o(),
+                        Op::CoerceS => self.op_coerce_s(),
+                        Op::CoerceU => self.op_coerce_u(),
+                        Op::CoerceUSwapPop => self.op_coerce_u_swap_pop(),
+                        Op::ConvertO => self.op_convert_o(),
+                        Op::ConvertS => self.op_convert_s(),
+                        Op::Add => self.op_add(),
+                        Op::AddI => self.op_add_i(),
+                        Op::BitAnd => self.op_bitand(),
+                        Op::BitNot => self.op_bitnot(),
+                        Op::BitOr => self.op_bitor(),
+                        Op::BitXor => self.op_bitxor(),
+                        Op::DecLocal { index } => self.op_declocal(*index),
+                        Op::DecLocalI { index } => self.op_declocal_i(*index),
+                        Op::Decrement => self.op_decrement(),
+                        Op::DecrementI => self.op_decrement_i(),
+                        Op::Divide => self.op_divide(),
+                        Op::IncLocal { index } => self.op_inclocal(*index),
+                        Op::IncLocalI { index } => self.op_inclocal_i(*index),
+                        Op::Increment => self.op_increment(),
+                        Op::IncrementI => self.op_increment_i(),
+                        Op::LShift => self.op_lshift(),
+                        Op::Modulo => self.op_modulo(),
+                        Op::Multiply => self.op_multiply(),
+                        Op::MultiplyI => self.op_multiply_i(),
+                        Op::Negate => self.op_negate(),
+                        Op::NegateI => self.op_negate_i(),
+                        Op::RShift => self.op_rshift(),
+                        Op::Subtract => self.op_subtract(),
+                        Op::SubtractI => self.op_subtract_i(),
+                        Op::Swap => self.op_swap(),
+                        Op::URShift => self.op_urshift(),
+                        Op::Jump { offset } => self.op_jump(*offset),
+                        Op::IfTrue { offset } => self.op_if_true(*offset),
+                        Op::IfFalse { offset } => self.op_if_false(*offset),
+                        Op::IfStrictEq { offset } => self.op_if_strict_eq(*offset),
+                        Op::IfStrictNe { offset } => self.op_if_strict_ne(*offset),
+                        Op::IfEq { offset } => self.op_if_eq(*offset),
+                        Op::IfNe { offset } => self.op_if_ne(*offset),
+                        Op::IfGe { offset } => self.op_if_ge(*offset),
+                        Op::IfGt { offset } => self.op_if_gt(*offset),
+                        Op::IfLe { offset } => self.op_if_le(*offset),
+                        Op::IfLt { offset } => self.op_if_lt(*offset),
+                        Op::IfNge { offset } => self.op_if_nge(*offset),
+                        Op::IfNgt { offset } => self.op_if_ngt(*offset),
+                        Op::IfNle { offset } => self.op_if_nle(*offset),
+                        Op::IfNlt { offset } => self.op_if_nlt(*offset),
+                        Op::StrictEquals => self.op_strict_equals(),
+                        Op::Equals => self.op_equals(),
+                        Op::GreaterEquals => self.op_greater_equals(),
+                        Op::GreaterThan => self.op_greater_than(),
+                        Op::LessEquals => self.op_less_equals(),
+                        Op::LessThan => self.op_less_than(),
+                        Op::Nop => Ok(FrameControl::Continue),
+                        Op::Not => self.op_not(),
+                        Op::HasNext => self.op_has_next(),
+                        Op::HasNext2 {
+                            object_register,
+                            index_register,
+                        } => self.op_has_next_2(*object_register, *index_register),
+                        Op::NextName => self.op_next_name(),
+                        Op::NextValue => self.op_next_value(),
+                        Op::IsType { class } => self.op_is_type(*class),
+                        Op::IsTypeLate => self.op_is_type_late(),
+                        Op::AsType { class } => self.op_as_type(*class),
+                        Op::AsTypeLate => self.op_as_type_late(),
+                        Op::InstanceOf => self.op_instance_of(),
+                        Op::Debug {
+                            is_local_register,
+                            register_name,
+                            register,
+                        } => self.op_debug(*is_local_register, *register_name, *register),
+                        Op::DebugFile { file_name } => self.op_debug_file(*file_name),
+                        Op::DebugLine { line_num } => self.op_debug_line(*line_num),
+                        Op::Bkpt => self.op_bkpt(),
+                        Op::BkptLine { line_num } => self.op_bkpt_line(*line_num),
+                        Op::Timestamp => self.op_timestamp(),
+                        Op::TypeOf => self.op_type_of(),
+                        Op::EscXAttr => self.op_esc_xattr(),
+                        Op::EscXElem => self.op_esc_elem(),
+                        Op::LookupSwitch(ref lookup_switch) => {
+                            self.op_lookup_switch(lookup_switch.default_offset, &lookup_switch.case_offsets)
+                        }
+                        Op::Coerce { class } => self.op_coerce(*class),
+                        Op::CoerceSwapPop { class } => self.op_coerce_swap_pop(*class),
+                        Op::CheckFilter => self.op_check_filter(),
+                        Op::Si8 => self.op_si8(),
+                        Op::Si16 => self.op_si16(),
+                        Op::Si32 => self.op_si32(),
+                        Op::Sf32 => self.op_sf32(),
+                        Op::Sf64 => self.op_sf64(),
+                        Op::Li8 => self.op_li8(),
+                        Op::Li16 => self.op_li16(),
+                        Op::Li32 => self.op_li32(),
+                        Op::Lf32 => self.op_lf32(),
+                        Op::Lf64 => self.op_lf64(),
+                        Op::Sxi1 => self.op_sxi1(),
+                        Op::Sxi8 => self.op_sxi8(),
+                        Op::Sxi16 => self.op_sxi16(),
+                        Op::Throw => self.op_throw(),
+                        _ => {
+                            tracing::info!("Encountered unimplemented AVM2 opcode {:?}", op);
+                            Err("Unknown op".into())
+                        }
+                    };
+
+                    if let Err(error) = result {
+                        self.handle_err(method, error)
+                    } else {
+                        result
+                    }
                 }
             };
-
-            if let Err(error) = result {
-                return self.handle_err(method, error);
+            match frame_control {
+                Ok(FrameControl::Return(value)) => break Ok(value),
+                Ok(FrameControl::Continue) => {}
+                Err(e) => break Err(e),
             }
-            result
         }
     }
 
