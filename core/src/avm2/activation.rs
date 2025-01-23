@@ -765,6 +765,22 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Err(Error::AvmError(error))
     }
 
+    //#[cold]
+    //#[inline(never)]
+    fn timeout_check(&mut self) -> Result<(), Error<'gc>> {
+        self.actions_since_timeout_check += 1;
+        if self.actions_since_timeout_check >= 200000 {
+            self.actions_since_timeout_check = 0;
+            if self.context.update_start.elapsed() >= self.context.max_execution_duration {
+                return Err(
+                    "A script in this movie has taken too long to execute and has been terminated."
+                        .into(),
+                );
+            }
+        }
+        Ok(())
+    }
+
     /// Run a single action from a given action reader.
     fn interpreter_loop(
         &mut self,
@@ -772,19 +788,6 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         opcodes: &[Op<'gc>],
     ) -> Result<Value<'gc>, Error<'gc>> {
         loop {
-            /*
-            self.actions_since_timeout_check += 1;
-            if self.actions_since_timeout_check >= 200000 {
-                self.actions_since_timeout_check = 0;
-                if self.context.update_start.elapsed() >= self.context.max_execution_duration {
-                    return Err(
-                        "A script in this movie has taken too long to execute and has been terminated."
-                            .into(),
-                    );
-                }
-            }
-            */
-
             let op = &opcodes[self.ip as usize];
             self.ip += 1;
             avm_debug!(self.avm2(), "Opcode: {op:?}");
@@ -2286,6 +2289,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     }
 
     fn op_jump(&mut self, offset: i32) -> Result<(), Error<'gc>> {
+        self.timeout_check()?;
         self.ip += offset;
 
         Ok(())
@@ -2295,6 +2299,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value = self.pop_stack().coerce_to_boolean();
 
         if value {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2305,6 +2310,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value = self.pop_stack().coerce_to_boolean();
 
         if !value {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2316,6 +2322,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value1.strict_eq(&value2) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2327,6 +2334,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if !value1.strict_eq(&value2) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2338,6 +2346,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value1.abstract_eq(&value2, self)? {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2349,6 +2358,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if !value1.abstract_eq(&value2, self)? {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2360,6 +2370,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value1.abstract_lt(&value2, self)? == Some(false) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2371,6 +2382,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value2.abstract_lt(&value1, self)? == Some(true) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2382,6 +2394,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value2.abstract_lt(&value1, self)? == Some(false) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2393,6 +2406,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value1.abstract_lt(&value2, self)? == Some(true) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2404,6 +2418,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value1.abstract_lt(&value2, self)?.unwrap_or(true) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2415,6 +2430,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if !value2.abstract_lt(&value1, self)?.unwrap_or(false) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2426,6 +2442,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if value2.abstract_lt(&value1, self)?.unwrap_or(true) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2437,6 +2454,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         let value1 = self.pop_stack();
 
         if !value1.abstract_lt(&value2, self)?.unwrap_or(false) {
+            self.timeout_check()?;
             self.ip += offset;
         }
 
@@ -2833,6 +2851,8 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 "VerifyError: Invalid value type on stack (should have been int) for LookupSwitch!",
             )
         })?;
+
+        self.timeout_check()?;
 
         let offset = case_offsets
             .get(index as usize)
