@@ -793,23 +793,23 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             avm_debug!(self.avm2(), "Opcode: {op:?}");
 
             let result = match op {
-                Op::PushByte { value } => self.op_push_byte(*value),
-                Op::PushDouble { value } => self.op_push_double(*value),
-                Op::PushFalse => self.op_push_false(),
-                Op::PushInt { value } => self.op_push_int(*value),
+                Op::PushByte { value } => { self.op_push_byte(*value); continue; },
+                Op::PushDouble { value } => { self.op_push_double(*value); continue; },
+                Op::PushFalse => { self.op_push_false(); continue; },
+                Op::PushInt { value } => { self.op_push_int(*value); continue; },
                 Op::PushNamespace { value } => self.op_push_namespace(method, *value),
-                Op::PushNaN => self.op_push_nan(),
-                Op::PushNull => self.op_push_null(),
-                Op::PushShort { value } => self.op_push_short(*value),
-                Op::PushString { string } => self.op_push_string(*string),
-                Op::PushTrue => self.op_push_true(),
-                Op::PushUint { value } => self.op_push_uint(*value),
-                Op::PushUndefined => self.op_push_undefined(),
-                Op::Pop => self.op_pop(),
-                Op::Dup => self.op_dup(),
-                Op::GetLocal { index } => self.op_get_local(*index),
-                Op::SetLocal { index } => self.op_set_local(*index),
-                Op::Kill { index } => self.op_kill(*index),
+                Op::PushNaN => { self.op_push_nan(); continue; },
+                Op::PushNull => { self.op_push_null(); continue; },
+                Op::PushShort { value } => { self.op_push_short(*value); continue; },
+                Op::PushString { string } => { self.op_push_string(*string); continue; },
+                Op::PushTrue => { self.op_push_true(); continue; },
+                Op::PushUint { value } => { self.op_push_uint(*value); continue; },
+                Op::PushUndefined => { self.op_push_undefined(); continue; },
+                Op::Pop => { self.op_pop(); continue; },
+                Op::Dup => { self.op_dup(); continue; },
+                Op::GetLocal { index } => { self.op_get_local(*index); continue; },
+                Op::SetLocal { index } => { self.op_set_local(*index); continue; },
+                Op::Kill { index } => { self.op_kill(*index); continue; },
                 Op::Call { num_args } => self.op_call(*num_args),
                 Op::CallMethod {
                     index,
@@ -863,10 +863,10 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::PushScope => self.op_push_scope(),
                 Op::NewCatch { index } => self.op_newcatch(method, *index),
                 Op::PushWith => self.op_push_with(),
-                Op::PopScope => self.op_pop_scope(),
-                Op::GetOuterScope { index } => self.op_get_outer_scope(*index),
-                Op::GetScopeObject { index } => self.op_get_scope_object(*index),
-                Op::GetGlobalScope => self.op_get_global_scope(),
+                Op::PopScope => { self.op_pop_scope(); continue; },
+                Op::GetOuterScope { index } => { self.op_get_outer_scope(*index); continue; },
+                Op::GetScopeObject { index } => { self.op_get_scope_object(*index); continue; },
+                Op::GetGlobalScope => { self.op_get_global_scope(); continue; },
                 Op::FindDef { multiname } => self.op_find_def(*multiname),
                 Op::FindProperty { multiname } => self.op_find_property(*multiname),
                 Op::FindPropStrict { multiname } => self.op_find_prop_strict(*multiname),
@@ -888,14 +888,14 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::NewFunction { index } => self.op_new_function(method, *index),
                 Op::NewClass { class } => self.op_new_class(*class),
                 Op::ApplyType { num_types } => self.op_apply_type(*num_types),
-                Op::NewArray { num_args } => self.op_new_array(*num_args),
-                Op::CoerceA => Ok(()),
-                Op::CoerceB => self.op_coerce_b(),
+                Op::NewArray { num_args } => { self.op_new_array(*num_args); continue; },
+                Op::CoerceA => continue,
+                Op::CoerceB => { self.op_coerce_b(); continue; },
                 Op::CoerceD => self.op_coerce_d(),
                 Op::CoerceDSwapPop => self.op_coerce_d_swap_pop(),
                 Op::CoerceI => self.op_coerce_i(),
                 Op::CoerceISwapPop => self.op_coerce_i_swap_pop(),
-                Op::CoerceO => self.op_coerce_o(),
+                Op::CoerceO => { self.op_coerce_o(); continue; },
                 Op::CoerceS => self.op_coerce_s(),
                 Op::CoerceU => self.op_coerce_u(),
                 Op::CoerceUSwapPop => self.op_coerce_u_swap_pop(),
@@ -925,7 +925,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::RShift => self.op_rshift(),
                 Op::Subtract => self.op_subtract(),
                 Op::SubtractI => self.op_subtract_i(),
-                Op::Swap => self.op_swap(),
+                Op::Swap => { self.op_swap(); continue; },
                 Op::URShift => self.op_urshift(),
                 Op::Jump { offset } => self.op_jump(*offset),
                 Op::IfTrue { offset } => self.op_if_true(*offset),
@@ -942,14 +942,14 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::IfNgt { offset } => self.op_if_ngt(*offset),
                 Op::IfNle { offset } => self.op_if_nle(*offset),
                 Op::IfNlt { offset } => self.op_if_nlt(*offset),
-                Op::StrictEquals => self.op_strict_equals(),
+                Op::StrictEquals => { self.op_strict_equals(); continue; }
                 Op::Equals => self.op_equals(),
                 Op::GreaterEquals => self.op_greater_equals(),
                 Op::GreaterThan => self.op_greater_than(),
                 Op::LessEquals => self.op_less_equals(),
                 Op::LessThan => self.op_less_than(),
-                Op::Nop => Ok(()),
-                Op::Not => self.op_not(),
+                Op::Nop => continue,
+                Op::Not => { self.op_not(); continue; }
                 Op::HasNext => self.op_has_next(),
                 Op::HasNext2 {
                     object_register,
@@ -957,9 +957,9 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 } => self.op_has_next_2(*object_register, *index_register),
                 Op::NextName => self.op_next_name(),
                 Op::NextValue => self.op_next_value(),
-                Op::IsType { class } => self.op_is_type(*class),
+                Op::IsType { class } => { self.op_is_type(*class); continue; }
                 Op::IsTypeLate => self.op_is_type_late(),
-                Op::AsType { class } => self.op_as_type(*class),
+                Op::AsType { class } => { self.op_as_type(*class); continue; }
                 Op::AsTypeLate => self.op_as_type_late(),
                 Op::InstanceOf => self.op_instance_of(),
                 Op::Debug {
@@ -972,7 +972,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 Op::Bkpt => self.op_bkpt(),
                 Op::BkptLine { line_num } => self.op_bkpt_line(*line_num),
                 Op::Timestamp => self.op_timestamp(),
-                Op::TypeOf => self.op_type_of(),
+                Op::TypeOf => { self.op_type_of(); continue; },
                 Op::Dxns { .. } => self.op_dxns(),
                 Op::DxnsLate => self.op_dxns_late(),
                 Op::EscXAttr => self.op_esc_xattr(),
@@ -1008,24 +1008,20 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         }
     }
 
-    fn op_push_byte(&mut self, value: i8) -> Result<(), Error<'gc>> {
+    fn op_push_byte(&mut self, value: i8) {
         self.push_stack(value as i32);
-        Ok(())
     }
 
-    fn op_push_double(&mut self, value: f64) -> Result<(), Error<'gc>> {
+    fn op_push_double(&mut self, value: f64) {
         self.push_stack(value);
-        Ok(())
     }
 
-    fn op_push_false(&mut self) -> Result<(), Error<'gc>> {
+    fn op_push_false(&mut self) {
         self.push_stack(false);
-        Ok(())
     }
 
-    fn op_push_int(&mut self, value: i32) -> Result<(), Error<'gc>> {
+    fn op_push_int(&mut self, value: i32) {
         self.push_stack(value);
-        Ok(())
     }
 
     fn op_push_namespace(
@@ -1040,73 +1036,56 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_push_nan(&mut self) -> Result<(), Error<'gc>> {
+    fn op_push_nan(&mut self)  {
         self.push_stack(f64::NAN);
-        Ok(())
     }
 
-    fn op_push_null(&mut self) -> Result<(), Error<'gc>> {
+    fn op_push_null(&mut self) {
         self.push_stack(Value::Null);
-        Ok(())
     }
 
-    fn op_push_short(&mut self, value: i16) -> Result<(), Error<'gc>> {
+    fn op_push_short(&mut self, value: i16) {
         self.push_stack(value);
-        Ok(())
     }
 
-    fn op_push_string(&mut self, string: AvmAtom<'gc>) -> Result<(), Error<'gc>> {
+    fn op_push_string(&mut self, string: AvmAtom<'gc>) {
         self.push_stack(string);
-        Ok(())
     }
 
-    fn op_push_true(&mut self) -> Result<(), Error<'gc>> {
+    fn op_push_true(&mut self)  {
         self.push_stack(true);
-        Ok(())
     }
 
-    fn op_push_uint(&mut self, value: u32) -> Result<(), Error<'gc>> {
+    fn op_push_uint(&mut self, value: u32) {
         self.push_stack(value);
-        Ok(())
     }
 
-    fn op_push_undefined(&mut self) -> Result<(), Error<'gc>> {
+    fn op_push_undefined(&mut self) {
         self.push_stack(Value::Undefined);
-        Ok(())
     }
 
-    fn op_pop(&mut self) -> Result<(), Error<'gc>> {
+    fn op_pop(&mut self) {
         let _ = self.pop_stack();
-
-        Ok(())
     }
 
-    fn op_dup(&mut self) -> Result<(), Error<'gc>> {
+    fn op_dup(&mut self) {
         let value = self.avm2().peek(0);
         self.push_stack(value);
-
-        Ok(())
     }
 
-    fn op_get_local(&mut self, register_index: u32) -> Result<(), Error<'gc>> {
+    fn op_get_local(&mut self, register_index: u32) {
         let value = self.local_register(register_index);
         self.push_stack(value);
-
-        Ok(())
     }
 
-    fn op_set_local(&mut self, register_index: u32) -> Result<(), Error<'gc>> {
+    fn op_set_local(&mut self, register_index: u32) {
         let value = self.pop_stack();
 
         self.set_local_register(register_index, value);
-
-        Ok(())
     }
 
-    fn op_kill(&mut self, register_index: u32) -> Result<(), Error<'gc>> {
+    fn op_kill(&mut self, register_index: u32) {
         self.set_local_register(register_index, Value::Undefined);
-
-        Ok(())
     }
 
     fn op_call(&mut self, arg_count: u32) -> Result<(), Error<'gc>> {
@@ -1578,23 +1557,19 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_pop_scope(&mut self) -> Result<(), Error<'gc>> {
+    fn op_pop_scope(&mut self) {
         self.pop_scope();
-
-        Ok(())
     }
 
-    fn op_get_outer_scope(&mut self, index: u32) -> Result<(), Error<'gc>> {
+    fn op_get_outer_scope(&mut self, index: u32) {
         // Verifier ensures that this points to a valid outer scope
 
         let scope = self.outer.get_unchecked(index as usize);
 
         self.push_stack(scope.values());
-
-        Ok(())
     }
 
-    fn op_get_scope_object(&mut self, index: u8) -> Result<(), Error<'gc>> {
+    fn op_get_scope_object(&mut self, index: u8) {
         let scope = self.scope_frame().get(index as usize).copied();
 
         if let Some(scope) = scope {
@@ -1602,14 +1577,10 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         } else {
             self.push_stack(Value::Undefined);
         };
-
-        Ok(())
     }
 
-    fn op_get_global_scope(&mut self) -> Result<(), Error<'gc>> {
+    fn op_get_global_scope(&mut self) {
         self.push_stack(self.global_scope().unwrap_or(Value::Null));
-
-        Ok(())
     }
 
     fn op_find_def(
@@ -1870,22 +1841,18 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_new_array(&mut self, num_args: u32) -> Result<(), Error<'gc>> {
+    fn op_new_array(&mut self, num_args: u32) {
         let args = self.pop_stack_args(num_args);
         let array = ArrayStorage::from_args(&args[..]);
         let array_obj = ArrayObject::from_storage(self, array);
 
         self.push_stack(array_obj);
-
-        Ok(())
     }
 
-    fn op_coerce_b(&mut self) -> Result<(), Error<'gc>> {
+    fn op_coerce_b(&mut self) {
         let value = self.pop_stack().coerce_to_boolean();
 
         self.push_stack(value);
-
-        Ok(())
     }
 
     fn op_coerce_d(&mut self) -> Result<(), Error<'gc>> {
@@ -1922,7 +1889,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_coerce_o(&mut self) -> Result<(), Error<'gc>> {
+    fn op_coerce_o(&mut self) {
         let value = self.pop_stack();
 
         let coerced = match value {
@@ -1931,8 +1898,6 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         };
 
         self.push_stack(coerced);
-
-        Ok(())
     }
 
     fn op_coerce_s(&mut self) -> Result<(), Error<'gc>> {
@@ -2267,14 +2232,12 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_swap(&mut self) -> Result<(), Error<'gc>> {
+    fn op_swap(&mut self) {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
 
         self.push_stack(value2);
         self.push_stack(value1);
-
-        Ok(())
     }
 
     fn op_urshift(&mut self) -> Result<(), Error<'gc>> {
@@ -2459,12 +2422,10 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_strict_equals(&mut self) -> Result<(), Error<'gc>> {
+    fn op_strict_equals(&mut self) {
         let value2 = self.pop_stack();
         let value1 = self.pop_stack();
         self.push_stack(value1.strict_eq(&value2));
-
-        Ok(())
     }
 
     fn op_equals(&mut self) -> Result<(), Error<'gc>> {
@@ -2522,12 +2483,10 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_not(&mut self) -> Result<(), Error<'gc>> {
+    fn op_not(&mut self) {
         let value = self.pop_stack().coerce_to_boolean();
 
         self.push_stack(!value);
-
-        Ok(())
     }
 
     fn op_has_next(&mut self) -> Result<(), Error<'gc>> {
@@ -2657,13 +2616,11 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_is_type(&mut self, class: Class<'gc>) -> Result<(), Error<'gc>> {
+    fn op_is_type(&mut self, class: Class<'gc>) {
         let value = self.pop_stack();
 
         let is_instance_of = value.is_of_type(self, class);
         self.push_stack(is_instance_of);
-
-        Ok(())
     }
 
     fn op_is_type_late(&mut self) -> Result<(), Error<'gc>> {
@@ -2686,7 +2643,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_as_type(&mut self, class: Class<'gc>) -> Result<(), Error<'gc>> {
+    fn op_as_type(&mut self, class: Class<'gc>) {
         let value = self.pop_stack();
 
         if value.is_of_type(self, class) {
@@ -2694,8 +2651,6 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         } else {
             self.push_stack(Value::Null);
         }
-
-        Ok(())
     }
 
     fn op_as_type_late(&mut self) -> Result<(), Error<'gc>> {
@@ -2760,7 +2715,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         Ok(())
     }
 
-    fn op_type_of(&mut self) -> Result<(), Error<'gc>> {
+    fn op_type_of(&mut self) {
         let value = self.pop_stack();
 
         let type_name = match value {
@@ -2797,8 +2752,6 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         };
 
         self.push_stack(Value::String(type_name.into()));
-
-        Ok(())
     }
 
     /// Implements `Op::Dxns`
