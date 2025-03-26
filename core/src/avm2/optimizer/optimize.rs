@@ -2,7 +2,7 @@ use crate::avm2::error::verify_error;
 use crate::avm2::method::{BytecodeMethod, ResolvedParamConfig};
 use crate::avm2::multiname::Multiname;
 use crate::avm2::op::Op;
-use crate::avm2::optimizer::blocks::{assemble_blocks, BlockExit};
+use crate::avm2::optimizer::blocks::assemble_blocks;
 use crate::avm2::property::Property;
 use crate::avm2::verify::Exception;
 use crate::avm2::vtable::VTable;
@@ -590,7 +590,8 @@ pub fn optimize<'gc>(
     let code_slice = Cell::from_mut(code.as_mut_slice());
     let code_slice = code_slice.as_slice_of_cells();
 
-    let block_list = assemble_blocks(code_slice, method_exceptions, jump_targets);
+    let (block_list, op_index_to_block_index_table) =
+        assemble_blocks(code_slice, method_exceptions, jump_targets);
 
     let types = Types {
         object: activation.avm2().class_defs().object,
@@ -648,34 +649,32 @@ pub fn optimize<'gc>(
     // A Vec holding lists of possible abstract states, indexed by block index
     let mut abstract_states: Vec<Option<AbstractState<'gc>>> = vec![None; block_list.len()];
 
+    abstract_states[0] = Some(entry_state.clone());
+
     // Block #0 is the entry block
-    let mut worklist = Vec::new();
-    worklist.push((0, entry_state.clone()));
-    while let Some((block_idx, provided_abstract_state)) = worklist.pop() {
+    let mut worklist = vec![0];
+    while let Some(block_idx) = worklist.pop() {
+
         let block = &block_list[block_idx];
+        //println!("block_idx = {}, idx = {}, len = {}", block_idx, block.start_index, block.ops.len());
 
-        let known_abstract_state = &mut abstract_states[block_idx];
+        let block_entry_state = abstract_states[block_idx].clone().expect("Entry state not found");
 
-        let used_entry_state = if let Some(known_abstract_state) = known_abstract_state {
-            let merged_state =
-                provided_abstract_state.merged_with(activation, known_abstract_state)?;
-            if merged_state.eq(known_abstract_state) {
-                // We've already verified that this state works, no need to run it again
-                continue;
-            } else {
-                merged_state
-            }
-        } else {
-            // We don't have any state in the state list yet, so we use the provided one
-            provided_abstract_state
-        };
+        abstract_interpret_ops(
+            activation,
+            block.start_index,
+            block.ops,
+            block_entry_state,
+            &mut abstract_states,
+            None,
+            &types,
+            &op_index_to_block_index_table,
+            &method_exceptions,
+            &mut worklist,
+            false
+        )?;
 
-        *known_abstract_state = Some(used_entry_state.clone());
-
-        let resulting_state =
-            abstract_interpret_ops(activation, block.ops, used_entry_state, None, &types, false)?;
-
-        for exit in &block.exits {
+        /*for exit in &block.exits {
             match exit {
                 BlockExit::Goto(target_block) => {
                     worklist.push((*target_block, resulting_state.clone()));
@@ -697,12 +696,12 @@ pub fn optimize<'gc>(
                 }
                 BlockExit::Return => {}
             }
-        }
+        }*/
     }
 
     // At this point we know the guaranteed state at every block start
     let mut replacement_states = HashMap::with_capacity(block_list.len());
-    for (i, abstract_state) in abstract_states.into_iter().enumerate() {
+    for (i, abstract_state) in abstract_states.iter().cloned().enumerate() {
         let start_index = block_list[i].start_index;
 
         let abstract_state = abstract_state.expect("Every block should be visited");
@@ -714,10 +713,15 @@ pub fn optimize<'gc>(
         // Now run through the ops and actually optimize them
         abstract_interpret_ops(
             activation,
+            0,
             code_slice,
             entry_state,
+            &mut abstract_states,
             Some(replacement_states),
             &types,
+            &op_index_to_block_index_table,
+            &method_exceptions,
+            &mut worklist,
             true,
         )?;
     }
@@ -725,14 +729,60 @@ pub fn optimize<'gc>(
     Ok(())
 }
 
+fn process_jump<'gc>(
+    activation: &mut Activation<'_, 'gc>,
+    target: usize,
+    abstract_states: &mut Vec<Option<AbstractState<'gc>>>,
+    current_state: &AbstractState<'gc>,
+    op_index_to_block_index_table: &HashMap<usize, usize>,
+    worklist: &mut Vec<usize>,
+    do_optimize: bool,
+) -> Result<(), Error<'gc>> {
+    if do_optimize {
+        return Ok(());
+    }
+
+    //println!("target {:?}", target);
+    //let mut keys: Vec<_> = op_index_to_block_index_table.keys().collect();
+    //keys.sort();
+    //println!("{:?}", keys);
+
+    let target_block_id = *op_index_to_block_index_table.get(&target).expect("unexpected jump target");
+    let new_target_state = if let Some(target_state) = &abstract_states[target_block_id] {
+        let merged_state = target_state.clone().merged_with(activation, current_state)?;
+        if merged_state.eq(target_state) {
+            // We've already verified that this state works, no need to run it again
+            return Ok(());
+        } else {
+            merged_state
+        }
+    } else {
+        // We don't have any state in the state list yet, so we use the provided one
+        current_state.clone()
+    };
+    abstract_states[target_block_id] = Some(new_target_state);
+
+    if let Some(index) = worklist.iter().position(|x| *x == target_block_id) {
+        worklist.remove(index);
+    }
+    worklist.push(target_block_id);
+
+    Ok(())
+}
+
 fn abstract_interpret_ops<'gc>(
     activation: &mut Activation<'_, 'gc>,
+    start_index: usize,
     ops: &[Cell<Op<'gc>>],
     initial_state: AbstractState<'gc>,
+    abstract_states: &mut Vec<Option<AbstractState<'gc>>>,
     mut replacement_states: Option<HashMap<usize, AbstractState<'gc>>>,
     types: &Types<'gc>,
+    op_index_to_block_index_table: &HashMap<usize, usize>,
+    method_exceptions: &[Exception<'gc>],
+    worklist: &mut Vec<usize>,
     do_optimize: bool,
-) -> Result<AbstractState<'gc>, Error<'gc>> {
+) -> Result<(), Error<'gc>> {
     // These make the code less readable
     #![allow(clippy::collapsible_if)]
     #![allow(clippy::single_match)]
@@ -742,6 +792,7 @@ fn abstract_interpret_ops<'gc>(
     let mut scope_stack = initial_state.scope_stack;
 
     for (i, op) in ops.iter().enumerate() {
+        //println!("{} {:?}", i, op);
         if let Some(ref mut replacement_states) = replacement_states {
             if let Some(new_state) = replacement_states.get_mut(&i) {
                 // This means we just hit a new block: update type information
@@ -750,6 +801,35 @@ fn abstract_interpret_ops<'gc>(
                 locals = std::mem::replace(&mut new_state.locals, Locals::empty());
                 stack = std::mem::replace(&mut new_state.stack, Stack::empty());
                 scope_stack = std::mem::replace(&mut new_state.scope_stack, ScopeStack::empty());
+            }
+        }
+
+        if op.get().can_throw_error() {
+            let current_idx = start_index + i;
+            for exception in method_exceptions {
+                if current_idx >= exception.from_offset as usize && current_idx < exception.to_offset as usize {
+                    // When branching as a result of an exception in a catch block,
+                    // the exception target will be run starting with an empty
+                    // scope stack and a stack with a single entry on it.
+                    let mut exception_stack = abstract_states[0].as_ref().unwrap().stack.clone();
+                    exception_stack.push_any(activation)?;
+                    let empty_scope_stack = abstract_states[0].as_ref().unwrap().scope_stack.clone();
+
+                    let current_state = AbstractState {
+                        locals: locals.clone(),
+                        stack: exception_stack,
+                        scope_stack: empty_scope_stack,
+                    };
+                    process_jump(
+                        activation,
+                        exception.target_offset as usize,
+                        abstract_states,
+                        &current_state,
+                        op_index_to_block_index_table,
+                        worklist,
+                        do_optimize,
+                    )?;
+                }
             }
         }
 
@@ -1769,20 +1849,80 @@ fn abstract_interpret_ops<'gc>(
             }
 
             // Control flow ops
+            Op::ReturnVoid => {
+                return Ok(());
+            }
             Op::ReturnValue { return_type } => {
                 let stack_value = stack.pop(activation)?;
 
                 if stack_value.matches_type(activation, return_type) {
                     optimize_op_to!(Op::ReturnValue { return_type: None });
                 }
+                return Ok(());
             }
-
-            Op::LookupSwitch(_) | Op::IfTrue { .. } | Op::IfFalse { .. } | Op::Throw => {
+            Op::Jump { offset } => {
+                let current_idx = (start_index + i) as isize;
+                let target = (current_idx + offset as isize + 1) as usize;
+                let current_state = AbstractState { locals: locals.clone(), stack: stack.clone(), scope_stack: scope_stack.clone() };
+                process_jump(
+                    activation,
+                    target,
+                    abstract_states,
+                    &current_state,
+                    op_index_to_block_index_table,
+                    worklist,
+                    do_optimize,
+                )?;
+                return Ok(());
+            }
+            Op::IfTrue { offset } | Op::IfFalse { offset } => {
                 stack.pop(activation)?;
-            }
 
-            // These ops don't change the state
-            Op::ReturnVoid | Op::Jump { .. } => {}
+                let current_idx = (start_index + i) as isize;
+                let target = (current_idx + offset as isize + 1) as usize;
+                let current_state = AbstractState { locals: locals.clone(), stack: stack.clone(), scope_stack: scope_stack.clone() };
+                process_jump(
+                    activation,
+                    target,
+                    abstract_states,
+                    &current_state,
+                    op_index_to_block_index_table,
+                    worklist,
+                    do_optimize,
+                )?;
+            }
+            Op::LookupSwitch(lookup_switch) => {
+                stack.pop(activation)?;
+
+                // todo: we don't really need the vec here
+                let mut targets = vec![];
+                let current_idx = (start_index + i) as isize;
+                for offset in &lookup_switch.case_offsets {
+                    targets.push(
+                        (current_idx + *offset as isize + 1) as usize,
+                    );
+                }
+                targets.push(
+                    (current_idx + lookup_switch.default_offset as isize + 1) as usize,
+                );
+                let current_state = AbstractState { locals: locals.clone(), stack: stack.clone(), scope_stack: scope_stack.clone() };
+                for target in targets {
+                    process_jump(
+                        activation,
+                        target,
+                        abstract_states,
+                        &current_state,
+                        op_index_to_block_index_table,
+                        worklist,
+                        do_optimize,
+                    )?;
+                }
+                return Ok(());
+            }
+            Op::Throw => {
+                stack.pop(activation)?;
+                return Ok(());
+            }
 
             Op::CallMethod { .. }
             | Op::CoerceSwapPop { .. }
@@ -1795,9 +1935,18 @@ fn abstract_interpret_ops<'gc>(
         }
     }
 
-    Ok(AbstractState {
-        locals,
-        stack,
-        scope_stack,
-    })
+
+    // if we didn't return earlier, we must jump to the next block.
+    let target = start_index + ops.len();
+    let current_state = AbstractState { locals: locals.clone(), stack: stack.clone(), scope_stack: scope_stack.clone() };
+    process_jump(
+        activation,
+        target,
+        abstract_states,
+        &current_state,
+        op_index_to_block_index_table,
+        worklist,
+        do_optimize,
+    )?;
+    Ok(())
 }
