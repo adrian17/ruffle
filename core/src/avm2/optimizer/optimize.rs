@@ -666,7 +666,6 @@ pub fn optimize<'gc>(
             block.ops,
             block_entry_state,
             &mut abstract_states,
-            None,
             &types,
             &op_index_to_block_index_table,
             &method_exceptions,
@@ -699,31 +698,25 @@ pub fn optimize<'gc>(
         }*/
     }
 
-    // At this point we know the guaranteed state at every block start
-    let mut replacement_states = HashMap::with_capacity(block_list.len());
-    for (i, abstract_state) in abstract_states.iter().cloned().enumerate() {
-        let start_index = block_list[i].start_index;
-
-        let abstract_state = abstract_state.expect("Every block should be visited");
-
-        replacement_states.insert(start_index, abstract_state);
-    }
-
     if activation.avm2().optimizer_enabled() {
         // Now run through the ops and actually optimize them
-        abstract_interpret_ops(
-            activation,
-            0,
-            code_slice,
-            entry_state,
-            &mut abstract_states,
-            Some(replacement_states),
-            &types,
-            &op_index_to_block_index_table,
-            &method_exceptions,
-            &mut worklist,
-            true,
-        )?;
+
+        for (i, block) in block_list.iter().enumerate() {
+            // todo: don't need to clone here
+            let block_entry_state = abstract_states[i].clone().expect("Entry state not found");
+            abstract_interpret_ops(
+                activation,
+                0,
+                block.ops,
+                block_entry_state,
+                &mut abstract_states,
+                &types,
+                &op_index_to_block_index_table,
+                &method_exceptions,
+                &mut worklist,
+                true,
+            )?;
+        }
     }
 
     Ok(())
@@ -779,7 +772,6 @@ fn abstract_interpret_ops<'gc>(
     ops: &[Cell<Op<'gc>>],
     initial_state: AbstractState<'gc>,
     abstract_states: &mut Vec<Option<AbstractState<'gc>>>,
-    mut replacement_states: Option<HashMap<usize, AbstractState<'gc>>>,
     types: &Types<'gc>,
     op_index_to_block_index_table: &HashMap<usize, usize>,
     method_exceptions: &[Exception<'gc>],
@@ -796,16 +788,6 @@ fn abstract_interpret_ops<'gc>(
 
     for (i, op) in ops.iter().enumerate() {
         //println!("{} {:?}", i, op);
-        if let Some(ref mut replacement_states) = replacement_states {
-            if let Some(new_state) = replacement_states.get_mut(&i) {
-                // This means we just hit a new block: update type information
-                // from the AbstractState provided to us. We won't use it again,
-                // so we don't need to clone it the info.
-                locals = std::mem::replace(&mut new_state.locals, Locals::empty());
-                stack = std::mem::replace(&mut new_state.stack, Stack::empty());
-                scope_stack = std::mem::replace(&mut new_state.scope_stack, ScopeStack::empty());
-            }
-        }
 
         if op.get().can_throw_error() {
             let current_idx = start_index + i;
