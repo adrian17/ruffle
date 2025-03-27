@@ -762,10 +762,13 @@ fn process_jump<'gc>(
     };
     abstract_states[target_block_id] = Some(new_target_state);
 
-    if let Some(index) = worklist.iter().position(|x| *x == target_block_id) {
-        worklist.remove(index);
+    // FP reschedules blocks to the front of queue (for us, it'd be back of the vec).
+    // I don't know if there's any good reason for that, but not doing it is faster.
+    if let Some(_) = worklist.iter().position(|x| *x == target_block_id) {
+        //worklist.remove(index);
+    } else {
+        worklist.push(target_block_id);
     }
-    worklist.push(target_block_id);
 
     Ok(())
 }
