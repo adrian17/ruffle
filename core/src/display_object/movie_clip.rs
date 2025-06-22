@@ -205,7 +205,7 @@ impl<'gc> MovieClipData<'gc> {
             tag_stream_pos: Cell::new(0),
             current_frame: Cell::new(0),
             audio_stream: Cell::new(None),
-            container: ChildContainer::new(movie),
+            container: ChildContainer::new(&movie),
             object: None,
             clip_event_handlers: Vec::new(),
             clip_event_flags: Cell::new(ClipEventFlag::empty()),
@@ -346,11 +346,12 @@ impl<'gc> MovieClip<'gc> {
         );
 
         mc.base.base.reset_for_movie_load();
+        mc.container = ChildContainer::new(&movie);
         mc.shared = Gc::new(
             context.gc(),
             MovieClipShared::with_data(
                 0,
-                movie.clone().into(),
+                movie.into(),
                 total_frames,
                 loader_info.map(|l| l.into()),
             ),
@@ -360,7 +361,6 @@ impl<'gc> MovieClip<'gc> {
         mc.base.base.set_is_root(is_root);
         mc.current_frame.set(0);
         mc.audio_stream.set(None);
-        mc.container = ChildContainer::new(movie);
         drop(mc);
     }
 
@@ -1266,6 +1266,11 @@ impl<'gc> MovieClip<'gc> {
         depth: Depth,
         place_object: &swf::PlaceObject,
     ) -> Option<DisplayObject<'gc>> {
+        if self.has_child_at_depth(depth) {
+            context.avm_warning(&format!("Failed to place object at depth {depth}."));
+            return None;
+        }
+
         let movie = self.movie();
         let library = context.library.library_for_movie_mut(movie.clone());
         match library.instantiate_by_id(id, context.gc_context) {

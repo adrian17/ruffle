@@ -116,7 +116,7 @@ pub use crate::avm2::object::responder_object::{
     responder_allocator, ResponderObject, ResponderObjectWeak,
 };
 pub use crate::avm2::object::script_object::{
-    maybe_int_property, scriptobject_allocator, ScriptObject, ScriptObjectData, ScriptObjectWeak,
+    get_dynamic_property, scriptobject_allocator, ScriptObject, ScriptObjectData, ScriptObjectWeak,
     ScriptObjectWrapper,
 };
 pub use crate::avm2::object::shader_data_object::{
@@ -712,6 +712,11 @@ pub trait TObject<'gc>: 'gc + Collect<'gc> + Debug + Into<Object<'gc>> + Clone +
 
     /// Unwrap this object as mutable array storage.
     fn as_array_storage_mut(&self, _mc: &Mutation<'gc>) -> Option<RefMut<ArrayStorage<'gc>>> {
+        None
+    }
+
+    /// Unwrap this object as a vector.
+    fn as_vector_object(&self) -> Option<VectorObject<'gc>> {
         None
     }
 

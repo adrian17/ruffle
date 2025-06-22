@@ -166,7 +166,11 @@ extern "C" {
     fn panic(this: &JavascriptPlayer, error: &JsError);
 
     #[wasm_bindgen(method, js_name = "displayRootMovieDownloadFailedMessage")]
-    fn display_root_movie_download_failed_message(this: &JavascriptPlayer, invalid_swf: bool);
+    fn display_root_movie_download_failed_message(
+        this: &JavascriptPlayer,
+        invalid_swf: bool,
+        fetch_error: String,
+    );
 
     #[wasm_bindgen(method, js_name = "displayRestoredFromBfcacheMessage")]
     fn display_restored_from_bfcache_message(this: &JavascriptPlayer);
@@ -228,6 +232,13 @@ struct MovieMetadata {
     uncompressed_len: i32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ScrollingBehavior {
+    Always,
+    Never,
+    Smart,
+}
+
 #[wasm_bindgen]
 impl RuffleHandle {
     /// Stream an arbitrary movie file from (presumably) the Internet.
@@ -273,7 +284,7 @@ impl RuffleHandle {
             SwfMovie::from_data(&swf_data.to_vec(), url.to_string(), None).map_err(|e| {
                 let _ = self.with_core_mut(|core| {
                     core.ui_mut()
-                        .display_root_movie_download_failed_message(true);
+                        .display_root_movie_download_failed_message(true, e.to_string());
                 });
                 format!("Error loading movie: {e}")
             })?;
@@ -684,9 +695,26 @@ impl RuffleHandle {
                             _ => return,
                         };
                         let _ = instance.with_core_mut(|core| {
-                            core.handle_event(PlayerEvent::MouseWheel { delta });
-                            if core.should_prevent_scrolling() {
-                                js_event.prevent_default();
+                            let scroll_handled =
+                                core.handle_event(PlayerEvent::MouseWheel { delta });
+                            match config.scrolling_behavior {
+                                ScrollingBehavior::Always => {
+                                    // Do not prevent scrolling
+                                }
+                                ScrollingBehavior::Never => {
+                                    // Always prevent scrolling
+                                    js_event.prevent_default();
+                                }
+                                ScrollingBehavior::Smart => {
+                                    if scroll_handled {
+                                        // AVM2 logic
+                                        js_event.prevent_default();
+                                    }
+                                    if core.should_prevent_scrolling() {
+                                        // AVM1 logic
+                                        js_event.prevent_default();
+                                    }
+                                }
                             }
                         });
                     });
