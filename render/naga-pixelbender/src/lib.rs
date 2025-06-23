@@ -487,7 +487,11 @@ impl ShaderBuilder<'_> {
                             num_vec4fs += 1;
                             (float_offset, ParamKind::Float)
                         }
-                        PixelBenderTypeOpcode::TInt
+                        PixelBenderTypeOpcode::TBool
+                        | PixelBenderTypeOpcode::TBool2
+                        | PixelBenderTypeOpcode::TBool3
+                        | PixelBenderTypeOpcode::TBool4
+                        | PixelBenderTypeOpcode::TInt
                         | PixelBenderTypeOpcode::TInt2
                         | PixelBenderTypeOpcode::TInt3
                         | PixelBenderTypeOpcode::TInt4 => {
@@ -1207,6 +1211,16 @@ impl ShaderBuilder<'_> {
                             convert: Some(4),
                         }),
                         Opcode::IntToFloat => self.evaluate_expr(Expression::As {
+                            kind: crate::ScalarKind::Float,
+                            expr: src,
+                            convert: Some(4),
+                        }),
+                        Opcode::FloatToBool => self.evaluate_expr(Expression::As {
+                            kind: crate::ScalarKind::Bool,
+                            expr: src,
+                            convert: Some(4),
+                        }),
+                        Opcode::BoolToFloat => self.evaluate_expr(Expression::As {
                             kind: crate::ScalarKind::Float,
                             expr: src,
                             convert: Some(4),
