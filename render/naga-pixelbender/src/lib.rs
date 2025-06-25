@@ -398,19 +398,38 @@ impl ShaderBuilder<'_> {
         let expected_dst_channels = match dst_param_type {
             PixelBenderTypeOpcode::TFloat4 => PixelBenderRegChannel::RGBA.as_slice(),
             PixelBenderTypeOpcode::TFloat3 => PixelBenderRegChannel::RGB.as_slice(),
+            PixelBenderTypeOpcode::TFloat2 => PixelBenderRegChannel::RG.as_slice(),
+            PixelBenderTypeOpcode::TFloat => [PixelBenderRegChannel::R].as_slice(),
             _ => panic!("Invalid destination register type: {dst_param_type:?}"),
         };
-        assert_eq!(
-            dst.channels, expected_dst_channels,
+        assert!(
+            dst.channels.len() <= 4,
             "Invalid 'dest' parameter register {dst:?}"
         );
 
         // We've emitted all of the opcodes into the function body, so we can now load
         // from the destination register and return it from the function.
         let dst_load = builder.load_src_register(dst)?;
-        builder.push_statement(Statement::Return {
-            value: Some(dst_load),
-        });
+
+        // Set the alpha channel to 1 if the number of channels is <4.
+        let dst = if expected_dst_channels.len() < 4 {
+            let mut components = Vec::with_capacity(4);
+            for i in 0..3 {
+                components.push(builder.evaluate_expr(Expression::AccessIndex {
+                    base: dst_load,
+                    index: i as u32,
+                }));
+            }
+            components.push(builder.onef32);
+
+            builder.evaluate_expr(Expression::Compose {
+                ty: builder.vec4f,
+                components,
+            })
+        } else {
+            dst_load
+        };
+        builder.push_statement(Statement::Return { value: Some(dst) });
 
         let block = match builder.blocks.pop().unwrap() {
             BlockStackEntry::Normal(block) => block,
@@ -884,7 +903,7 @@ impl ShaderBuilder<'_> {
                                 right: src,
                             })
                         }
-                        Opcode::Sub | Opcode::Add | Opcode::Mul => {
+                        Opcode::Sub | Opcode::Add | Opcode::Mul | Opcode::Div => {
                             // The destination is also used as the first operand: 'dst = dst <op> src'
                             let left = self.load_src_register(&dst)?;
 
@@ -892,6 +911,7 @@ impl ShaderBuilder<'_> {
                                 Opcode::Sub => BinaryOperator::Subtract,
                                 Opcode::Add => BinaryOperator::Add,
                                 Opcode::Mul => BinaryOperator::Multiply,
+                                Opcode::Div => BinaryOperator::Divide,
                                 _ => unreachable!(),
                             };
 
@@ -1158,6 +1178,17 @@ impl ShaderBuilder<'_> {
                             let src_val = self.load_src_register_with_padding(src_reg, false)?;
                             let res = self.evaluate_expr(Expression::Math {
                                 fun: MathFunction::Sqrt,
+                                arg: src_val,
+                                arg1: None,
+                                arg2: None,
+                                arg3: None,
+                            });
+                            self.pad_result(res, src_reg.is_scalar())
+                        }
+                        Opcode::RSqrt => {
+                            let src_val = self.load_src_register_with_padding(src_reg, false)?;
+                            let res = self.evaluate_expr(Expression::Math {
+                                fun: MathFunction::InverseSqrt,
                                 arg: src_val,
                                 arg1: None,
                                 arg2: None,

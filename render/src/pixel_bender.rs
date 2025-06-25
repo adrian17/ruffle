@@ -86,6 +86,7 @@ pub enum PixelBenderRegChannel {
 }
 
 impl PixelBenderRegChannel {
+    pub const RG: [PixelBenderRegChannel; 2] = [PixelBenderRegChannel::R, PixelBenderRegChannel::G];
     pub const RGB: [PixelBenderRegChannel; 3] = [
         PixelBenderRegChannel::R,
         PixelBenderRegChannel::G,
@@ -331,6 +332,22 @@ pub struct PixelBenderShader {
     pub params: Vec<PixelBenderParam>,
     pub metadata: Vec<PixelBenderMetadata>,
     pub operations: Vec<Operation>,
+}
+
+impl PixelBenderShader {
+    pub fn output_channels(&self) -> Option<usize> {
+        for param in &self.params {
+            if let PixelBenderParam::Normal {
+                qualifier: PixelBenderParamQualifier::Output,
+                reg,
+                ..
+            } = param
+            {
+                return Some(reg.channels.len());
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
