@@ -196,7 +196,7 @@ impl Avm2ObjectWindow {
 
     fn show_elements<'gc>(
         &mut self,
-        array: std::cell::Ref<ArrayStorage<'gc>>,
+        array: std::cell::Ref<'_, ArrayStorage<'gc>>,
         messages: &mut Vec<Message>,
         context: &mut UpdateContext<'gc>,
         ui: &mut Ui,
@@ -277,7 +277,7 @@ impl Avm2ObjectWindow {
 
                 ui.label("Interfaces");
                 ui.vertical(|ui| {
-                    for interface in &*class.inner_class_definition().all_interfaces() {
+                    for interface in class.inner_class_definition().all_interfaces() {
                         ui.text_edit_singleline(
                             &mut interface
                                 .name()

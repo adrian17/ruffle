@@ -4,11 +4,12 @@ use std::cell::Cell;
 
 use crate::avm1::function::{ExecutionReason, FunctionObject};
 use crate::avm1::property_decl::{define_properties_on, Declaration};
+use crate::avm1::xml::{XmlNode, ELEMENT_NODE, TEXT_NODE};
 use crate::avm1::{Activation, Attribute, Error, NativeObject, Object, Value};
 use crate::avm_warn;
 use crate::backend::navigator::Request;
 use crate::string::{AvmString, StringContext, WStr, WString};
-use crate::xml::{custom_unescape, XmlNode, ELEMENT_NODE, TEXT_NODE};
+use crate::xml::custom_unescape;
 use gc_arena::barrier::unlock;
 use gc_arena::lock::Lock;
 use gc_arena::{Collect, Gc};
@@ -87,7 +88,7 @@ impl<'gc> Xml<'gc> {
     fn empty(context: &StringContext<'gc>, object: Object<'gc>) -> Self {
         let gc_context = context.gc();
 
-        let mut root = XmlNode::new(gc_context, ELEMENT_NODE, None);
+        let root = XmlNode::new(gc_context, ELEMENT_NODE, None);
         root.introduce_script_object(gc_context, object);
 
         let xml = Self(Gc::new(
@@ -176,7 +177,7 @@ impl<'gc> Xml<'gc> {
                     let child =
                         XmlNode::from_start_event(activation, bs, self.id_map(), parser.decoder())?;
                     open_tags
-                        .last_mut()
+                        .last()
                         .unwrap()
                         .append_child(activation.gc(), child);
                     open_tags.push(child);
@@ -185,7 +186,7 @@ impl<'gc> Xml<'gc> {
                     let child =
                         XmlNode::from_start_event(activation, bs, self.id_map(), parser.decoder())?;
                     open_tags
-                        .last_mut()
+                        .last()
                         .unwrap()
                         .append_child(activation.gc(), child);
                 }
@@ -196,18 +197,13 @@ impl<'gc> Xml<'gc> {
                     Self::handle_text_cdata(
                         custom_unescape(&bt.into_inner(), parser.decoder())?.as_bytes(),
                         ignore_white,
-                        &mut open_tags,
+                        &open_tags,
                         activation,
                     );
                 }
                 Event::CData(bt) => {
                     // This is already unescaped
-                    Self::handle_text_cdata(
-                        &bt.into_inner(),
-                        ignore_white,
-                        &mut open_tags,
-                        activation,
-                    );
+                    Self::handle_text_cdata(&bt.into_inner(), ignore_white, &open_tags, activation);
                 }
                 Event::Decl(bd) => {
                     let mut xml_decl = WString::from_buf(b"<?".to_vec());
@@ -240,7 +236,7 @@ impl<'gc> Xml<'gc> {
     fn handle_text_cdata(
         text: &[u8],
         ignore_white: bool,
-        open_tags: &mut [XmlNode<'gc>],
+        open_tags: &[XmlNode<'gc>],
         activation: &mut Activation<'_, 'gc>,
     ) {
         let is_whitespace_char = |c: &u8| matches!(*c, b'\t' | b'\n' | b'\r' | b' ');
@@ -249,7 +245,7 @@ impl<'gc> Xml<'gc> {
             let text = AvmString::new_utf8_bytes(activation.gc(), text);
             let child = XmlNode::new(activation.gc(), TEXT_NODE, Some(text));
             open_tags
-                .last_mut()
+                .last()
                 .unwrap()
                 .append_child(activation.gc(), child);
         }
@@ -303,7 +299,7 @@ fn create_element<'gc>(
 ) -> Result<Value<'gc>, Error<'gc>> {
     if let (NativeObject::Xml(_), [name, ..]) = (this.native(), args) {
         let name = name.coerce_to_string(activation)?;
-        let mut node = XmlNode::new(activation.gc(), ELEMENT_NODE, Some(name));
+        let node = XmlNode::new(activation.gc(), ELEMENT_NODE, Some(name));
         return Ok(node.script_object(activation).into());
     }
 
@@ -317,7 +313,7 @@ fn create_text_node<'gc>(
 ) -> Result<Value<'gc>, Error<'gc>> {
     if let (NativeObject::Xml(_), [text, ..]) = (this.native(), args) {
         let text = text.coerce_to_string(activation)?;
-        let mut node = XmlNode::new(activation.gc(), TEXT_NODE, Some(text));
+        let node = XmlNode::new(activation.gc(), TEXT_NODE, Some(text));
         return Ok(node.script_object(activation).into());
     }
 
@@ -348,7 +344,7 @@ fn parse_xml<'gc>(
     args: &[Value<'gc>],
 ) -> Result<Value<'gc>, Error<'gc>> {
     if let NativeObject::Xml(xml) = this.native() {
-        for mut child in xml.root().children().rev() {
+        for child in xml.root().children().rev() {
             child.remove_node(activation.gc());
         }
 

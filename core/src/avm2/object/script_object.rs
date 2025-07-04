@@ -7,7 +7,7 @@ use crate::avm2::error;
 use crate::avm2::object::{ClassObject, FunctionObject, Object, ObjectPtr, TObject};
 use crate::avm2::value::Value;
 use crate::avm2::vtable::VTable;
-use crate::avm2::{Error, Multiname};
+use crate::avm2::{Error, Multiname, QName};
 use crate::string::AvmString;
 use gc_arena::barrier::{unlock, Write};
 use gc_arena::{
@@ -169,22 +169,25 @@ pub struct ScriptObjectWrapper<'gc>(pub Gc<'gc, ScriptObjectData<'gc>>);
 
 impl<'gc> ScriptObjectWrapper<'gc> {
     /// Retrieve the values stored directly on this ScriptObjectData.
-    pub fn values(&self) -> Ref<DynamicMap<DynamicKey<'gc>, Value<'gc>>> {
+    pub fn values(&self) -> Ref<'_, DynamicMap<DynamicKey<'gc>, Value<'gc>>> {
         self.0.values.borrow()
     }
 
     pub fn values_mut(
         &self,
         mc: &Mutation<'gc>,
-    ) -> RefMut<DynamicMap<DynamicKey<'gc>, Value<'gc>>> {
+    ) -> RefMut<'_, DynamicMap<DynamicKey<'gc>, Value<'gc>>> {
         unlock!(Gc::write(mc, self.0), ScriptObjectData, values).borrow_mut()
     }
 
-    fn bound_methods(&self) -> Ref<Vec<Option<FunctionObject<'gc>>>> {
+    fn bound_methods(&self) -> Ref<'_, Vec<Option<FunctionObject<'gc>>>> {
         self.0.bound_methods.borrow()
     }
 
-    fn bound_methods_mut(&self, mc: &Mutation<'gc>) -> RefMut<Vec<Option<FunctionObject<'gc>>>> {
+    fn bound_methods_mut(
+        &self,
+        mc: &Mutation<'gc>,
+    ) -> RefMut<'_, Vec<Option<FunctionObject<'gc>>>> {
         unlock!(Gc::write(mc, self.0), ScriptObjectData, bound_methods).borrow_mut()
     }
 
@@ -400,15 +403,15 @@ impl<'gc> ScriptObjectWrapper<'gc> {
         unlock!(Gc::write(mc, self.0), ScriptObjectData, vtable).set(vtable);
     }
 
-    pub fn debug_class_name(&self) -> Box<dyn std::fmt::Debug + 'gc> {
-        Box::new(self.instance_class().debug_name())
+    pub fn class_name(&self) -> QName<'gc> {
+        self.instance_class().name()
     }
 }
 
 impl Debug for ScriptObject<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_struct("ScriptObject")
-            .field("name", &ScriptObjectWrapper(self.0).debug_class_name())
+            .field("name", &ScriptObjectWrapper(self.0).class_name())
             .field("ptr", &Gc::as_ptr(self.0))
             .finish()
     }

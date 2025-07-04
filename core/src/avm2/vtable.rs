@@ -167,11 +167,11 @@ impl<'gc> VTable<'gc> {
         self.0.read().method_table.get(disp_id as usize).cloned()
     }
 
-    pub fn default_slots(&self) -> Ref<Vec<Option<Value<'gc>>>> {
+    pub fn default_slots(&self) -> Ref<'_, Vec<Option<Value<'gc>>>> {
         Ref::map(self.0.read(), |v| &v.default_slots)
     }
 
-    pub fn slot_classes(&self) -> Ref<Vec<PropertyClass<'gc>>> {
+    pub fn slot_classes(&self) -> Ref<'_, Vec<PropertyClass<'gc>>> {
         Ref::map(self.0.read(), |v| &v.slot_classes)
     }
 
@@ -299,7 +299,7 @@ impl<'gc> VTable<'gc> {
             &mut write.slot_classes,
         );
 
-        for trait_data in &*defining_class_def.traits() {
+        for trait_data in defining_class_def.traits() {
             match trait_data.kind() {
                 TraitKind::Method { method, .. } => {
                     let entry = ClassBoundMethod {

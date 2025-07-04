@@ -181,8 +181,6 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             context,
         };
 
-        // Script initializers should only be run once
-        assert!(!method.is_info_resolved());
         // Resolve signature
         method.resolve_info(&mut created_activation)?;
 
@@ -259,7 +257,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                     let arg = if let Some(default_value) = &param_config.default_value {
                         *default_value
                     } else {
-                        return Err(Error::AvmError(make_mismatch_error(
+                        return Err(Error::avm_error(make_mismatch_error(
                             self,
                             method,
                             user_arguments.len(),
@@ -382,17 +380,15 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         self.is_interpreter = false;
 
         // Resolve parameters and return type
-        if !method.is_info_resolved() {
-            method.resolve_info(self)?;
-        }
+        method.resolve_info(self)?;
 
         // Everything is now setup for the verifier to run
         method.verify(self)?;
 
-        let signature = &*method.resolved_param_config();
+        let signature = method.resolved_param_config();
 
         if user_arguments.len() > signature.len() && !has_rest_or_args && !method.is_unchecked() {
-            return Err(Error::AvmError(make_mismatch_error(
+            return Err(Error::avm_error(make_mismatch_error(
                 self,
                 method,
                 user_arguments.len(),
@@ -426,7 +422,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 } else if method.is_unchecked() {
                     Value::Undefined
                 } else {
-                    return Err(Error::AvmError(make_mismatch_error(
+                    return Err(Error::avm_error(make_mismatch_error(
                         self,
                         method,
                         user_arguments.len(),
@@ -562,7 +558,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
     /// Like `caller_movie()`, but returns the root movie if `caller_movie`
     /// is `None`. This matches what FP does in most cases.
     pub fn caller_movie_or_root(&self) -> Arc<SwfMovie> {
-        self.caller_movie().unwrap_or(self.context.swf.clone())
+        self.caller_movie().unwrap_or(self.context.root_swf.clone())
     }
 
     /// Returns the global scope of this activation.
@@ -932,9 +928,10 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         ip: usize,
         error: Error<'gc>,
     ) -> Result<usize, Error<'gc>> {
-        let error = match error {
-            Error::AvmError(err) => err,
-            Error::RustError(_) => return Err(error),
+        let error = if let Some(error) = error.as_avm_error() {
+            error
+        } else {
+            return Err(error);
         };
 
         let verified_info = method.get_verified_info();
@@ -954,7 +951,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
 
                 if matches {
                     #[cfg(feature = "avm_debug")]
-                    tracing::info!(target: "avm_caught", "Caught exception: {:?}", Error::AvmError(error));
+                    tracing::info!(target: "avm_caught", "Caught exception: {:?}", Error::avm_error(error));
 
                     self.clear_stack();
                     self.push_stack(error);
@@ -965,7 +962,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             }
         }
 
-        Err(Error::AvmError(error))
+        Err(Error::avm_error(error))
     }
 
     #[inline(always)]
@@ -1457,7 +1454,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             if matches!(name_value, Value::Object(Object::XmlListObject(_))) {
                 // ECMA-357 11.3.1 The delete Operator
                 // If the type of the operand is XMLList, then a TypeError exception is thrown.
-                return Err(Error::AvmError(type_error(
+                return Err(Error::avm_error(type_error(
                     self,
                     "Error #1119: Delete operator is not supported with operand of type XMLList.",
                     1119,
@@ -1676,7 +1673,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
                 .name()
                 .to_qualified_name_err_message(self.gc());
 
-            return Err(Error::AvmError(type_error(
+            return Err(Error::avm_error(type_error(
                 self,
                 &format!(
                     "Error #1016: Descendants operator (..) not supported on type {class_name}",
@@ -1991,7 +1988,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         } else {
             let class_name = value.instance_of_class_name(self);
 
-            return Err(Error::AvmError(type_error(
+            return Err(Error::avm_error(type_error(
                 self,
                 &format!("Error #1123: Filter operator not supported on type {class_name}."),
                 1123,
@@ -2500,7 +2497,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
             .as_object()
             .and_then(|o| o.as_class_object())
         else {
-            return Err(Error::AvmError(type_error(
+            return Err(Error::avm_error(type_error(
                 self,
                 "Error #1041: The right-hand side of operator must be a class.",
                 1041,
@@ -2535,7 +2532,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
 
         if let Some(class) = class.as_object() {
             let Some(class) = class.as_class_object() else {
-                return Err(Error::AvmError(type_error(
+                return Err(Error::avm_error(type_error(
                     self,
                     "Error #1041: The right-hand side of operator must be a class.",
                     1041,
@@ -2558,7 +2555,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
 
     fn op_instance_of(&mut self) -> Result<(), Error<'gc>> {
         let Some(type_object) = self.pop_stack().as_object() else {
-            return Err(Error::AvmError(type_error(
+            return Err(Error::avm_error(type_error(
                 self,
                 "Error #1040: The right-hand side of instanceof must be a class or function.",
                 1040,
@@ -2566,7 +2563,7 @@ impl<'a, 'gc> Activation<'a, 'gc> {
         };
 
         if type_object.as_class_object().is_none() && type_object.as_function_object().is_none() {
-            return Err(Error::AvmError(type_error(
+            return Err(Error::avm_error(type_error(
                 self,
                 "Error #1040: The right-hand side of instanceof must be a class or function.",
                 1040,
@@ -3004,6 +3001,6 @@ impl<'a, 'gc> Activation<'a, 'gc> {
 
     fn op_throw(&mut self) -> Result<(), Error<'gc>> {
         let error_val = self.pop_stack();
-        Err(Error::AvmError(error_val))
+        Err(Error::avm_error(error_val))
     }
 }

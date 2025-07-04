@@ -196,16 +196,14 @@ pub fn exec<'gc>(
                 caller_movie,
             );
 
-            if !method.is_info_resolved() {
-                method.resolve_info(&mut activation)?;
-            }
+            method.resolve_info(&mut activation)?;
 
-            let signature = &*method.resolved_param_config();
+            let signature = method.resolved_param_config();
 
             // Check for too many arguments
             if arguments.len() > signature.len() && !method.is_variadic() && !method.is_unchecked()
             {
-                return Err(Error::AvmError(make_mismatch_error(
+                return Err(Error::avm_error(make_mismatch_error(
                     &mut activation,
                     method,
                     arguments.len(),
@@ -313,8 +311,7 @@ pub fn display_function<'gc>(
         } else {
             let mut method_trait = None;
 
-            let traits = bound_class.traits();
-            for t in &*traits {
+            for t in bound_class.traits() {
                 if t.as_method().is_some_and(|tm| tm == method) {
                     method_trait = Some(t);
                     break;

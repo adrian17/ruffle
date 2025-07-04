@@ -53,7 +53,7 @@ pub fn get_local<'gc>(
         return Ok(Value::Null);
     }
 
-    let mut movie_url = if let Ok(url) = url::Url::parse(activation.context.swf.url()) {
+    let mut movie_url = if let Ok(url) = url::Url::parse(activation.context.root_swf.url()) {
         url
     } else {
         tracing::error!("SharedObject::get_local: Unable to parse movie URL");
@@ -207,7 +207,7 @@ pub fn flush<'gc>(
         if activation.context.storage.put(name, &bytes) {
             Ok(istr!("flushed").into())
         } else {
-            Err(Error::AvmError(error(
+            Err(Error::avm_error(error(
                 activation,
                 "Error #2130: Unable to flush SharedObject.",
                 2130,

@@ -172,6 +172,9 @@ pub struct SystemClasses<'gc> {
     pub id3info: ClassObject<'gc>,
     pub textrun: ClassObject<'gc>,
     pub sharedobject: ClassObject<'gc>,
+    pub worker: ClassObject<'gc>,
+    pub workerdomain: ClassObject<'gc>,
+    pub messagechannel: ClassObject<'gc>,
 }
 
 #[derive(Clone, Collect)]
@@ -335,6 +338,9 @@ impl<'gc> SystemClasses<'gc> {
             id3info: object,
             textrun: object,
             sharedobject: object,
+            worker: object,
+            workerdomain: object,
+            messagechannel: object,
         }
     }
 }
@@ -429,11 +435,8 @@ pub fn init_early_classes<'gc>(
     class_c_class.init_vtable(activation.context)?;
 
     // Now we link the i_classes and c_classes with each other:
-    object_i_class.set_c_class(mc, object_c_class);
-    object_c_class.set_i_class(mc, object_i_class);
-
-    class_i_class.set_c_class(mc, class_c_class);
-    class_c_class.set_i_class(mc, class_i_class);
+    object_i_class.link_with_c_class(mc, object_c_class);
+    class_i_class.link_with_c_class(mc, class_c_class);
 
     // Set the classes on the TranslationUnit to prevent `TranslationUnit::load_class`
     // from creating duplicate classes for them
@@ -705,6 +708,9 @@ pub fn init_native_system_classes(activation: &mut Activation<'_, '_>) {
             ("flash.utils", "ByteArray", bytearray),
             ("flash.utils", "Dictionary", dictionary),
             ("flash.system", "ApplicationDomain", application_domain),
+            ("flash.system", "MessageChannel", messagechannel),
+            ("flash.system", "Worker", worker),
+            ("flash.system", "WorkerDomain", workerdomain),
             ("flash.text", "Font", font),
             ("flash.text", "StaticText", statictext),
             ("flash.text", "TextFormat", textformat),

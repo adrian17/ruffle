@@ -21,7 +21,7 @@ pub fn vector_allocator<'gc>(
     _class: ClassObject<'gc>,
     activation: &mut Activation<'_, 'gc>,
 ) -> Result<Object<'gc>, Error<'gc>> {
-    return Err(Error::AvmError(type_error(
+    return Err(Error::avm_error(type_error(
         activation,
         "Error #1007: Instantiation attempted on a non-constructor.",
         1007,
@@ -53,7 +53,7 @@ pub fn call_handler<'gc>(
     args: &[Value<'gc>],
 ) -> Result<Value<'gc>, Error<'gc>> {
     if args.len() != 1 {
-        return Err(Error::AvmError(argument_error(
+        return Err(Error::avm_error(argument_error(
             activation,
             &format!(
                 "Error #1112: Argument count mismatch on class coercion.  Expected 1, got {}.",
@@ -199,7 +199,7 @@ pub fn concat<'gc>(
 
             let instance_of_class_name = arg.instance_of_class_name(activation);
 
-            return Err(Error::AvmError(type_error(
+            return Err(Error::avm_error(type_error(
                 activation,
                 &format!(
                     "Error #1034: Type Coercion failed: cannot convert {instance_of_class_name}@00000000000 to {base_vector_name}.",
@@ -779,10 +779,7 @@ fn setup_vector_class<'gc>(
 pub fn init_vector_class_defs(activation: &mut Activation<'_, '_>) {
     // Mark Vector as a generic class
     let generic_vector = activation.avm2().class_defs().generic_vector;
-    generic_vector.set_attributes(
-        activation.gc(),
-        ClassAttributes::GENERIC | ClassAttributes::FINAL,
-    );
+    generic_vector.set_attributes(ClassAttributes::GENERIC | ClassAttributes::FINAL);
 
     // Setup the four builtin vector classes
 
