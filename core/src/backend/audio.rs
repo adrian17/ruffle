@@ -766,7 +766,7 @@ impl<'gc> AudioManager<'gc> {
     ) {
         if let Some(handle) = context
             .library
-            .library_for_movie_mut(display_object.movie())
+            .library_for_movie_mut(display_object.movie(), context.gc())
             .get_sound(character_id)
         {
             use swf::SoundEvent;

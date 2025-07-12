@@ -54,7 +54,7 @@ pub fn get_application_domain<'gc>(
                 let domain = activation
                     .context
                     .library
-                    .library_for_movie_mut(movie.clone())
+                    .library_for_movie_mut(movie.clone(), activation.gc())
                     .try_avm2_domain();
 
                 if let Some(domain) = domain {
@@ -69,7 +69,7 @@ pub fn get_application_domain<'gc>(
                 let domain = activation
                     .context
                     .library
-                    .library_for_movie_mut(movie.clone())
+                    .library_for_movie_mut(movie.clone(), activation.gc())
                     .avm2_domain();
                 return Ok(DomainObject::from_domain(activation, domain).into());
             }

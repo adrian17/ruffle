@@ -116,10 +116,17 @@ impl<'gc> Avm2ClassRegistry<'gc> {
     }
 }
 
+use gc_arena::Gc;
+use gc_arena::lock::RefLock;
+
+#[derive(Collect, Clone, Copy)]
+#[collect(no_drop)]
+pub struct MovieLibrary<'gc>(pub Gc<'gc, RefLock<MovieLibraryData<'gc>>>);
+
 /// Symbol library for a single given SWF.
 #[derive(Collect)]
 #[collect(no_drop)]
-pub struct MovieLibrary<'gc> {
+pub struct MovieLibraryData<'gc> {
     swf: Arc<SwfMovie>,
     characters: HashMap<CharacterId, Character<'gc>>,
     export_characters: Avm1PropertyMap<'gc, CharacterId>,
@@ -129,7 +136,7 @@ pub struct MovieLibrary<'gc> {
     avm2_domain: Option<Avm2Domain<'gc>>,
 }
 
-impl<'gc> MovieLibrary<'gc> {
+impl<'gc> MovieLibraryData<'gc> {
     pub fn new(swf: Arc<SwfMovie>) -> Self {
         Self {
             swf,
@@ -369,7 +376,7 @@ impl<'gc> MovieLibrary<'gc> {
 }
 
 pub struct MovieLibrarySource<'a, 'gc> {
-    pub library: &'a MovieLibrary<'gc>,
+    pub library: &'a MovieLibraryData<'gc>,
 }
 
 impl ruffle_render::bitmap::BitmapSource for MovieLibrarySource<'_, '_> {
@@ -435,12 +442,15 @@ impl<'gc> MovieLibraries<'gc> {
         self.0.get(key)
     }
 
-    fn get_or_insert_mut(&mut self, movie: Arc<SwfMovie>) -> &mut MovieLibrary<'gc> {
+    fn get_or_insert_mut(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) -> &mut MovieLibrary<'gc> {
         // NOTE(Clippy): Cannot use or_default() here as PtrWeakKeyHashMap does not have such a method on its Entry API
         #[allow(clippy::unwrap_or_default)]
         self.0
             .entry(movie.clone())
-            .or_insert_with(|| MovieLibrary::new(movie))
+            .or_insert_with(|| {
+                let data = Gc::new(gc_context, RefLock::new(MovieLibraryData::new(movie)));
+                MovieLibrary(data)
+            })
     }
 
     fn known_movies(&self) -> Vec<Arc<SwfMovie>> {
@@ -495,12 +505,16 @@ impl<'gc> Library<'gc> {
         }
     }
 
-    pub fn library_for_movie(&self, movie: Arc<SwfMovie>) -> Option<&MovieLibrary<'gc>> {
-        self.movie_libraries.get(&movie)
+    pub fn library_for_movie(&self, movie: Arc<SwfMovie>) -> Option<std::cell::Ref<'gc, MovieLibraryData<'gc>>> {
+        use std::backtrace::Backtrace;
+        //println!("\n\n--- REF ---\n{}", Backtrace::capture());
+        self.movie_libraries.get(&movie).map(|a| a.0.borrow())
     }
 
-    pub fn library_for_movie_mut(&mut self, movie: Arc<SwfMovie>) -> &mut MovieLibrary<'gc> {
-        self.movie_libraries.get_or_insert_mut(movie)
+    pub fn library_for_movie_mut(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) -> std::cell::RefMut<'gc, MovieLibraryData<'gc>> {
+        use std::backtrace::Backtrace;
+        //println!("\n\n--- MUT ---\n{}", Backtrace::capture());
+        self.movie_libraries.get_or_insert_mut(movie, gc_context).0.borrow_mut(gc_context)
     }
 
     pub fn known_movies(&self) -> Vec<Arc<SwfMovie>> {

@@ -128,7 +128,7 @@ impl<'gc> TDisplayObject<'gc> for Text<'gc> {
     fn replace_with(self, context: &mut UpdateContext<'gc>, id: CharacterId) {
         if let Some(new_text) = context
             .library
-            .library_for_movie_mut(self.movie())
+            .library_for_movie_mut(self.movie(), context.gc())
             .get_text(id)
         {
             self.set_shared(context, new_text.0.shared.get());

@@ -375,7 +375,7 @@ impl<'gc> UpdateContext<'gc> {
         activation
             .context
             .library
-            .library_for_movie_mut(activation.context.root_swf.clone())
+            .library_for_movie_mut(activation.context.root_swf.clone(), activation.gc())
             .set_avm2_domain(stage_domain);
         activation.context.ui.set_mouse_visible(true);
 

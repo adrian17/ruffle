@@ -37,7 +37,7 @@ pub fn init<'gc>(
             if let Some(Character::Sound(sound)) = activation
                 .context
                 .library
-                .library_for_movie_mut(movie)
+                .library_for_movie_mut(movie, activation.gc())
                 .character_by_id(symbol)
             {
                 let sound = *sound;
