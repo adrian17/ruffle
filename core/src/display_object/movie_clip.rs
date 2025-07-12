@@ -401,6 +401,7 @@ impl<'gc> MovieClip<'gc> {
             match context
                 .library
                 .library_for_movie_mut(swf.movie.clone(), context.gc())
+                .unwrap()
                 .character_by_id(symbol)
             {
                 Some(Character::MovieClip(mc)) => {
@@ -558,8 +559,7 @@ impl<'gc> MovieClip<'gc> {
 
         let data = reader.read_slice_to_end();
         if !data.is_empty() {
-            let movie = self.movie();
-            let domain = context.library.library_for_movie_mut(movie, context.gc()).avm2_domain();
+            let domain = self.library(context).avm2_domain();
 
             // DoAbc tag seems to be equivalent to a DoAbc2 with Lazy flag set
             match Avm2::do_abc(
@@ -594,8 +594,7 @@ impl<'gc> MovieClip<'gc> {
 
         let do_abc = reader.read_do_abc_2()?;
         if !do_abc.data.is_empty() {
-            let movie = self.movie();
-            let domain = context.library.library_for_movie_mut(movie, context.gc()).avm2_domain();
+            let domain = self.library(context).avm2_domain();
             let name = AvmString::new(context.gc(), do_abc.name.decode(reader.encoding()));
 
             match Avm2::do_abc(
@@ -1257,7 +1256,7 @@ impl<'gc> MovieClip<'gc> {
         }
 
         let movie = self.movie();
-        let library = context.library.library_for_movie_mut(movie.clone(), context.gc());
+        let library = self.library(context);
         match library.instantiate_by_id(id, context.gc_context) {
             Some(child) => {
                 drop(library);
@@ -2194,12 +2193,7 @@ impl<'gc> MovieClip<'gc> {
 
                             drop(read);
 
-                            let movie = self.movie();
-                            let domain = context
-                                .library
-                                .library_for_movie(movie)
-                                .unwrap()
-                                .avm2_domain();
+                            let domain = self.library(context).avm2_domain();
 
                             if let Err(e) = Avm2::run_stack_frame_for_callable(
                                 callable,
@@ -3850,7 +3844,7 @@ impl<'gc, 'a> MovieClipShared<'gc> {
         movie: Arc<SwfMovie>,
     ) {
         let mc = context.gc();
-        let mut library = context.library.library_for_movie_mut(movie, context.gc());
+        let mut library = context.library.library_for_movie_mut(movie, context.gc()).unwrap();
         library.register_export(id, *name);
 
         // TODO: do other types of Character need to know their exported name?
@@ -3882,9 +3876,7 @@ impl<'gc, 'a> MovieClipShared<'gc> {
             let name = export.name.decode(reader.encoding());
             let name = AvmString::new(context.gc(), name);
 
-            let Some(library) = self.library(context) else {
-                unreachable!("Library for MC should exist");
-            };
+            let library = self.library(context);
             if let Some(character) = library.character_by_id(export.id)
                 .cloned()
             {
@@ -3893,7 +3885,7 @@ impl<'gc, 'a> MovieClipShared<'gc> {
                 tracing::debug!("register_export asset: {} (ID: {})", name, export.id);
 
                 if let Some(parent) = importer_movie {
-                    let mut parent_library = context.library.library_for_movie_mut(parent.clone(), context.gc());
+                    let mut parent_library = context.library.library_for_movie_mut(parent.clone(), context.gc()).unwrap();
 
                     if let Some(id) = parent_library.character_id_by_import_name(name) {
                         parent_library.register_character(id, character);
@@ -4146,12 +4138,10 @@ impl<'gc, 'a> MovieClip<'gc> {
 
             let movie = self.movie();
 
-            let library = activation
-                .context
-                .library
-                .library_for_movie_mut(movie.clone(), activation.gc());
+            let library = self.library(activation.context);
             let domain = library.avm2_domain();
             drop(library);
+
             let api_version = activation.context.avm2.root_api_version;
 
             for (class_name, id) in eager_tags.symbolclass_names {
@@ -4170,11 +4160,7 @@ impl<'gc, 'a> MovieClip<'gc> {
                                 id,
                             );
 
-                        let library = activation
-                            .context
-                            .library
-                            .library_for_movie_mut(movie.clone(), activation.gc());
-
+                        let library = self.library(activation.context);
                         match library.character_by_id(id) {
                             Some(Character::EditText(edit_text)) => {
                                 edit_text.set_avm2_class(activation.gc(), class_object)
@@ -4544,12 +4530,12 @@ impl<'gc> MovieClipShared<'gc> {
         self.swf.movie.clone()
     }
 
-    fn library<'a>(&self, context: &'a UpdateContext<'gc>) -> Option<std::cell::Ref<'gc, MovieLibraryData<'gc>>> {
-        context.library.library_for_movie(self.movie())
+    fn library<'a>(&self, context: &'a UpdateContext<'gc>) -> std::cell::Ref<'gc, MovieLibraryData<'gc>> {
+        context.library.library_for_movie(self.movie()).unwrap()
     }
 
     fn library_mut<'a>(&self, context: &'a mut UpdateContext<'gc>) -> std::cell::RefMut<'gc, MovieLibraryData<'gc>> {
-        context.library.library_for_movie_mut(self.movie(), context.gc())
+        context.library.library_for_movie_mut(self.movie(), context.gc()).unwrap()
     }
 
     fn take_eager_tags(&self, frame: FrameNumber) -> Option<EagerTags> {

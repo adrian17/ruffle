@@ -438,14 +438,23 @@ impl<'gc> MovieLibraries<'gc> {
         Self(PtrWeakKeyHashMap::new())
     }
 
-    fn get(&self, key: &Arc<SwfMovie>) -> Option<&MovieLibrary<'gc>> {
-        self.0.get(key)
+    fn get(&self, key: &Arc<SwfMovie>) -> Option<MovieLibrary<'gc>> {
+        self.0.get(key).copied()
     }
 
-    fn get_or_insert_mut(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) -> &mut MovieLibrary<'gc> {
+    fn create(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) {
+        let data = Gc::new(gc_context, RefLock::new(MovieLibraryData::new(movie.clone())));
+        let library = MovieLibrary(data);
+        let prev = self.0.insert(movie, library);
+        if prev.is_some() {
+            panic!("Creating library, but it already exists?");
+        }
+    }
+
+    fn get_or_insert_mut(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) -> MovieLibrary<'gc> {
         // NOTE(Clippy): Cannot use or_default() here as PtrWeakKeyHashMap does not have such a method on its Entry API
         #[allow(clippy::unwrap_or_default)]
-        self.0
+        *self.0
             .entry(movie.clone())
             .or_insert_with(|| {
                 let data = Gc::new(gc_context, RefLock::new(MovieLibraryData::new(movie)));
@@ -505,16 +514,24 @@ impl<'gc> Library<'gc> {
         }
     }
 
+    // get
     pub fn library_for_movie(&self, movie: Arc<SwfMovie>) -> Option<std::cell::Ref<'gc, MovieLibraryData<'gc>>> {
-        use std::backtrace::Backtrace;
-        //println!("\n\n--- REF ---\n{}", Backtrace::capture());
         self.movie_libraries.get(&movie).map(|a| a.0.borrow())
     }
 
-    pub fn library_for_movie_mut(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) -> std::cell::RefMut<'gc, MovieLibraryData<'gc>> {
-        use std::backtrace::Backtrace;
-        //println!("\n\n--- MUT ---\n{}", Backtrace::capture());
+    // get-mut
+    pub fn library_for_movie_mut(&self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) -> Option<std::cell::RefMut<'gc, MovieLibraryData<'gc>>> {
+        self.movie_libraries.get(&movie).map(|a| a.0.borrow_mut(gc_context))
+    }
+
+    // get-or-create mut (deprecated)?
+    pub fn library_for_movie_mut_or_create(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) -> std::cell::RefMut<'gc, MovieLibraryData<'gc>> {
         self.movie_libraries.get_or_insert_mut(movie, gc_context).0.borrow_mut(gc_context)
+    }
+
+    // create-only
+    pub fn create_library(&mut self, movie: Arc<SwfMovie>, gc_context: &Mutation<'gc>) {
+        self.movie_libraries.create(movie, gc_context);
     }
 
     pub fn known_movies(&self) -> Vec<Arc<SwfMovie>> {

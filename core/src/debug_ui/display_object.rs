@@ -1297,9 +1297,8 @@ impl DisplayObjectWindow {
                 ui.label("Character");
                 let id = object.id();
                 if let Some(name) =
-                    context
-                        .library
-                        .library_for_movie(object.movie())
+                    object
+                        .library(context)
                         .and_then(|l| {
                             l.export_characters().iter().find_map(|(k, v)| {
                                 if *v == id {

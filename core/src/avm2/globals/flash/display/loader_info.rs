@@ -51,10 +51,12 @@ pub fn get_application_domain<'gc>(
     if let Some(loader_stream) = this.as_loader_info_object().map(|o| o.loader_stream()) {
         match &*loader_stream {
             LoaderStream::NotYetLoaded(movie, _, _) => {
+                // something is wrong here, we're hitting this before the library is created
+                // which means we don't know its domain
                 let domain = activation
                     .context
                     .library
-                    .library_for_movie_mut(movie.clone(), activation.gc())
+                    .library_for_movie_mut_or_create(movie.clone(), activation.gc())
                     .try_avm2_domain();
 
                 if let Some(domain) = domain {
@@ -69,7 +71,8 @@ pub fn get_application_domain<'gc>(
                 let domain = activation
                     .context
                     .library
-                    .library_for_movie_mut(movie.clone(), activation.gc())
+                    .library_for_movie(movie.clone())
+                    .unwrap()
                     .avm2_domain();
                 return Ok(DomainObject::from_domain(activation, domain).into());
             }

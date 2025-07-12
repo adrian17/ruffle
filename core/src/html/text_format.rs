@@ -154,7 +154,7 @@ impl TextFormat {
         context: &mut UpdateContext<'_>,
     ) -> Self {
         let encoding = swf_movie.encoding();
-        let movie_library = context.library.library_for_movie_mut(swf_movie, context.gc());
+        let movie_library = context.library.library_for_movie(swf_movie).unwrap();
         let font = et.font_id().and_then(|fid| movie_library.get_font(fid));
         drop(movie_library);
         let font_class = et

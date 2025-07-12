@@ -109,7 +109,8 @@ pub fn init<'gc>(
             activation
                 .context
                 .library
-                .library_for_movie_mut(movie, activation.gc())
+                .library_for_movie(movie)
+                .unwrap()
                 .character_by_id(chara_id)
                 .cloned()
         });

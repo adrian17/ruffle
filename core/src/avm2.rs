@@ -549,8 +549,6 @@ impl<'gc> Avm2<'gc> {
         name: QName<'gc>,
         id: u16,
     ) -> Result<ClassObject<'gc>, Error<'gc>> {
-        let movie = movie_clip.movie().clone();
-
         let class_object = domain
             .get_defined_value(activation, name)?
             .as_object()
@@ -565,7 +563,7 @@ impl<'gc> Avm2<'gc> {
 
         let class = class_object.inner_class_definition();
 
-        let library = activation.context.library.library_for_movie_mut(movie, activation.gc());
+        let library = movie_clip.library(activation.context);
         let character = library.character_by_id(id);
 
         if let Some(character) = character {

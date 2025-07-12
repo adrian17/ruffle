@@ -51,7 +51,8 @@ pub fn bitmap_allocator<'gc>(
             }) = activation
                 .context
                 .library
-                .library_for_movie_mut(movie, activation.gc())
+                .library_for_movie(movie)
+                .unwrap()
                 .character_by_id(symbol)
                 .cloned()
             {

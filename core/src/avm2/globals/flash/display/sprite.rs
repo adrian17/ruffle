@@ -37,6 +37,7 @@ pub fn sprite_allocator<'gc>(
                 .context
                 .library
                 .library_for_movie_mut(movie, activation.gc())
+                .unwrap()
                 .instantiate_by_id(symbol, activation.context.gc_context);
 
             if let Some(child) = child {

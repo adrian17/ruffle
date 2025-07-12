@@ -1528,15 +1528,8 @@ fn load_bitmap<'gc>(
         .unwrap_or(&Value::Undefined)
         .coerce_to_string(activation)?;
 
-    let library = &*activation.context.library;
-
-    let movie = <DisplayObject as crate::display_object::TDisplayObject>::movie(
-        activation.target_clip_or_root(),
-    );
-
-    let Some(library) = library.library_for_movie(movie) else {
-        return Ok(Value::Undefined);
-    };
+    use crate::display_object::TDisplayObject;
+    let library = activation.target_clip_or_root().library(activation.context);
     let character = library.character_by_export_name(name);
 
     let Some((_id, Character::Bitmap { compressed, .. })) = character else {

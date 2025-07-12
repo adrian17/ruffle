@@ -191,7 +191,6 @@ impl<'gc> Avm2Button<'gc> {
         context: &mut UpdateContext<'gc>,
         swf_state: swf::ButtonState,
     ) -> (DisplayObject<'gc>, bool) {
-        let movie = self.movie();
         let sprite_class = context.avm2.classes().sprite;
 
         let mut children = Vec::new();
@@ -199,9 +198,8 @@ impl<'gc> Avm2Button<'gc> {
 
         for record in shared.cell.borrow().records.iter() {
             if record.states.contains(swf_state) {
-                match context
-                    .library
-                    .library_for_movie_mut(movie.clone(), context.gc())
+                match self
+                    .library(context)
                     .instantiate_by_id(record.id, context.gc_context)
                 {
                     Some(child) => {
@@ -246,7 +244,7 @@ impl<'gc> Avm2Button<'gc> {
 
             (child, false)
         } else {
-            let state_sprite = MovieClip::new(movie, context.gc());
+            let state_sprite = MovieClip::new(self.movie(), context.gc());
             state_sprite.set_avm2_class(context.gc(), Some(sprite_class));
             state_sprite.set_parent(context, Some(self.into()));
             catchup_display_object_to_frame(context, state_sprite.into());

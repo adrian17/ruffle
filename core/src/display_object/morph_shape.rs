@@ -92,9 +92,8 @@ impl<'gc> TDisplayObject<'gc> for MorphShape<'gc> {
     }
 
     fn replace_with(self, context: &mut UpdateContext<'gc>, id: CharacterId) {
-        if let Some(new_morph_shape) = context
-            .library
-            .library_for_movie_mut(self.movie(), context.gc())
+        if let Some(new_morph_shape) = self
+            .library(context)
             .get_morph_shape(id)
         {
             unlock!(Gc::write(context.gc(), self.0), MorphShapeData, shared)

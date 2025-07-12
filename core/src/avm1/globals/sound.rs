@@ -187,14 +187,11 @@ fn attach_sound<'gc>(
     let name = args.get(0).unwrap_or(&Value::Undefined);
     if let NativeObject::Sound(sound) = this.native() {
         let name = name.coerce_to_string(activation)?;
-        let movie = sound
+        let mc = sound
             .owner()
-            .unwrap_or_else(|| activation.base_clip().avm1_root())
-            .movie();
-        if let Some((_, Character::Sound(sound_handle))) = activation
-            .context
-            .library
-            .library_for_movie_mut(movie, activation.gc())
+            .unwrap_or_else(|| activation.base_clip().avm1_root());
+        if let Some((_, Character::Sound(sound_handle))) = mc
+            .library(activation.context)
             .character_by_export_name(name)
         {
             sound.set_sound(Some(*sound_handle));
@@ -543,14 +540,11 @@ fn stop<'gc>(
         if let Some(name) = args.get(0) {
             // Usage 1: Stop all instances of a particular sound, using the name parameter.
             let name = name.coerce_to_string(activation)?;
-            let movie = sound
+            let mc = sound
                 .owner()
-                .unwrap_or_else(|| activation.base_clip().avm1_root())
-                .movie();
-            if let Some((_, Character::Sound(sound))) = activation
-                .context
-                .library
-                .library_for_movie_mut(movie, activation.gc())
+                .unwrap_or_else(|| activation.base_clip().avm1_root());
+            if let Some((_, Character::Sound(sound))) = mc
+                .library(activation.context)
                 .character_by_export_name(name)
             {
                 // Stop all sounds with the given name.

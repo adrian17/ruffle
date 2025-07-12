@@ -135,7 +135,6 @@ impl<'gc> Avm1Button<'gc> {
         let mut removed_depths: fnv::FnvHashSet<_> =
             self.iter_render_list().map(|o| o.depth()).collect();
 
-        let movie = self.movie();
         self.0.state.set(state);
 
         // Create any new children that exist in this state, and remove children
@@ -155,9 +154,8 @@ impl<'gc> Avm1Button<'gc> {
 
                     // Instantiate new child.
                     _ => {
-                        if let Some(child) = context
-                            .library
-                            .library_for_movie_mut(movie.clone(), context.gc())
+                        if let Some(child) = self
+                            .library(context)
                             .instantiate_by_id(record.id, context.gc_context)
                         {
                             // New child that did not previously exist, create it.
@@ -310,9 +308,8 @@ impl<'gc> TDisplayObject<'gc> for Avm1Button<'gc> {
 
             for record in &self.0.shared.cell.borrow().records {
                 if record.states.contains(swf::ButtonState::HIT_TEST) {
-                    match context
-                        .library
-                        .library_for_movie_mut(self.0.movie(), context.gc())
+                    match self
+                        .library(context)
                         .instantiate_by_id(record.id, context.gc_context)
                     {
                         Some(child) => {

@@ -5,6 +5,7 @@ use crate::avm2::{
     Activation as Avm2Activation, Avm2, Error as Avm2Error, EventObject as Avm2EventObject,
     Multiname as Avm2Multiname, Object as Avm2Object, TObject as Avm2TObject, Value as Avm2Value,
 };
+use crate::library::MovieLibraryData;
 use crate::context::{RenderContext, UpdateContext};
 use crate::drawing::Drawing;
 use crate::loader::LoadManager;
@@ -2078,11 +2079,7 @@ pub trait TDisplayObject<'gc>:
             if let Some(parent @ Avm2Value::Object(_)) = self.parent().map(|p| p.object2()) {
                 if let Avm2Value::Object(child) = self.object2() {
                     if let Some(name) = self.name() {
-                        let domain = context
-                            .library
-                            .library_for_movie(self.movie())
-                            .unwrap()
-                            .avm2_domain();
+                        let domain = self.library(context).avm2_domain();
                         let mut activation = Avm2Activation::from_domain(context, domain);
                         let multiname =
                             Avm2Multiname::new(activation.avm2().find_public_namespace(), name);
@@ -2374,6 +2371,14 @@ pub trait TDisplayObject<'gc>:
 
     /// Return the SWF that defines this display object.
     fn movie(self) -> Arc<SwfMovie>;
+
+    fn library<'a>(self, context: &'a UpdateContext<'gc>) -> std::cell::Ref<'gc, MovieLibraryData<'gc>> {
+        context.library.library_for_movie(self.movie()).unwrap()
+    }
+
+    fn library_mut<'a>(self, context: &'a mut UpdateContext<'gc>) -> std::cell::RefMut<'gc, MovieLibraryData<'gc>> {
+        context.library.library_for_movie_mut(self.movie(), context.gc()).unwrap()
+    }
 
     fn loader_info(self) -> Option<Avm2Object<'gc>> {
         None

@@ -398,7 +398,7 @@ impl<'gc> LoadManager<'gc> {
                                 tracing::debug!("Preloading swf to run exports {:?}", url);
 
                                 // Create library for exports before preloading
-                                uc.library.library_for_movie_mut(clip.movie(), uc.gc());
+                                uc.library.create_library(clip.movie(), uc.gc());
                                 let res = clip.preload(uc, &mut execution_limit);
                                 tracing::debug!(
                                     "Preloaded swf to run exports result {:?} {}",
@@ -2062,6 +2062,11 @@ impl<'gc> Loader<'gc> {
             ContentType::Unknown => Arc::new(SwfMovie::error_movie(url.clone())),
         };
 
+        activation
+            .context
+            .library
+            .create_library(movie.clone(), activation.gc());
+
         match activation.context.load_manager.get_loader_mut(handle) {
             Some(Loader::Movie {
                 movie: old,
@@ -2109,7 +2114,8 @@ impl<'gc> Loader<'gc> {
                 let mut library = activation
                     .context
                     .library
-                    .library_for_movie_mut(movie.clone(), activation.gc());
+                    .library_for_movie_mut(movie.clone(), activation.gc())
+                    .unwrap();
 
                 library.set_avm2_domain(domain);
                 drop(library);
@@ -2178,7 +2184,8 @@ impl<'gc> Loader<'gc> {
                 let mut library = activation
                     .context
                     .library
-                    .library_for_movie_mut(movie.clone(), activation.gc());
+                    .library_for_movie_mut(movie.clone(), activation.gc())
+                    .unwrap();
 
                 library.set_avm2_domain(domain);
                 drop(library);

@@ -802,11 +802,10 @@ fn attach_movie<'gc>(
         return Ok(Value::Undefined);
     }
 
-    if let Some(new_clip) = activation
-        .context
-        .library
-        .library_for_movie(movie_clip.movie())
-        .and_then(|l| l.instantiate_by_export_name(export_name, activation.gc()))
+    let library = movie_clip.library(activation.context);
+    let new_clip = library.instantiate_by_export_name(export_name, activation.gc());
+    drop(library);
+    if let Some(new_clip) = new_clip
     {
         // Set name and attach to parent.
         new_clip.set_name(activation.gc(), new_instance_name);
@@ -968,7 +967,7 @@ pub fn clone_sprite<'gc>(
     let movie = parent.movie();
     let new_clip = if movie_clip.id() != 0 {
         // Clip from SWF; instantiate a new copy.
-        let library = context.library.library_for_movie(movie).unwrap();
+        let library = parent.library(context);
         library
             .instantiate_by_id(movie_clip.id(), context.gc())
             .unwrap()

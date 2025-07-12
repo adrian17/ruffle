@@ -78,10 +78,8 @@ impl<'gc> Text<'gc> {
 
         for block in &self.0.shared.get().text_blocks {
             let font_id = block.font_id.unwrap_or_default();
-            if let Some(font) = context
-                .library
-                .library_for_movie(self.movie())
-                .unwrap()
+            if let Some(font) = self
+                .library(context)
                 .get_font(font_id)
             {
                 for glyph in &block.glyphs {
@@ -126,9 +124,8 @@ impl<'gc> TDisplayObject<'gc> for Text<'gc> {
     }
 
     fn replace_with(self, context: &mut UpdateContext<'gc>, id: CharacterId) {
-        if let Some(new_text) = context
-            .library
-            .library_for_movie_mut(self.movie(), context.gc())
+        if let Some(new_text) = self
+            .library(context)
             .get_text(id)
         {
             self.set_shared(context, new_text.0.shared.get());
@@ -239,10 +236,8 @@ impl<'gc> TDisplayObject<'gc> for Text<'gc> {
                 font_id = block.font_id.unwrap_or(font_id);
                 height = block.height.unwrap_or(height);
 
-                if let Some(font) = context
-                    .library
-                    .library_for_movie(self.movie())
-                    .unwrap()
+                if let Some(font) = self
+                    .library(context)
                     .get_font(font_id)
                 {
                     let scale = (height.get() as f32) / font.scale();
@@ -277,11 +272,7 @@ impl<'gc> TDisplayObject<'gc> for Text<'gc> {
         _run_frame: bool,
     ) {
         if self.movie().is_action_script_3() {
-            let domain = context
-                .library
-                .library_for_movie(self.movie())
-                .unwrap()
-                .avm2_domain();
+            let domain = self.library(context).avm2_domain();
             let mut activation = Avm2Activation::from_domain(context, domain);
             let statictext = activation.avm2().classes().statictext;
             match Avm2StageObject::for_display_object_childless(
