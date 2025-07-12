@@ -1534,9 +1534,10 @@ fn load_bitmap<'gc>(
         activation.target_clip_or_root(),
     );
 
-    let character = library
-        .library_for_movie(movie)
-        .and_then(|l| l.character_by_export_name(name));
+    let Some(library) = library.library_for_movie(movie) else {
+        return Ok(Value::Undefined);
+    };
+    let character = library.character_by_export_name(name);
 
     let Some((_id, Character::Bitmap { compressed, .. })) = character else {
         return Ok(Value::Undefined);

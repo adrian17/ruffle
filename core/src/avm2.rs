@@ -565,7 +565,7 @@ impl<'gc> Avm2<'gc> {
 
         let class = class_object.inner_class_definition();
 
-        let library = activation.context.library.library_for_movie_mut(movie);
+        let library = activation.context.library.library_for_movie_mut(movie, activation.gc());
         let character = library.character_by_id(id);
 
         if let Some(character) = character {
