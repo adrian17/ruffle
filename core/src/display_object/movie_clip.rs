@@ -4459,6 +4459,7 @@ struct MovieClipShared<'gc> {
     cell: RefCell<MovieClipSharedMut>,
     id: CharacterId,
     swf: SwfSlice,
+    //new_library: NewLibrary<'gc>,
     total_frames: FrameNumber,
     /// Preload progress for the given clip's tag stream.
     #[collect(require_static)]
@@ -4502,8 +4503,17 @@ struct EagerTags {
 }
 
 impl<'gc> MovieClipShared<'gc> {
-    fn empty(movie: Arc<SwfMovie>) -> Self {
-        let mut s = Self::with_data(0, SwfSlice::empty(movie), 1, None);
+    fn empty(
+        //new_library: NewLibrary<'gc>,
+        movie: Arc<SwfMovie>
+    ) -> Self {
+        let mut s = Self::with_data(
+            0,
+            SwfSlice::empty(movie),
+            //new_library,
+            1,
+            None
+        );
 
         *s.preload_progress.cur_preload_frame.get_mut() = s.total_frames + 1;
 
@@ -4513,6 +4523,7 @@ impl<'gc> MovieClipShared<'gc> {
     fn with_data(
         id: CharacterId,
         swf: SwfSlice,
+        //new_library: NewLibrary<'gc>,
         total_frames: FrameNumber,
         loader_info: Option<Avm2Object<'gc>>,
     ) -> Self {
@@ -4520,6 +4531,7 @@ impl<'gc> MovieClipShared<'gc> {
             cell: Default::default(),
             id,
             swf,
+            //new_library,
             total_frames,
             preload_progress: Default::default(),
             exported_name: Lock::new(None),
